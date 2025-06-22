@@ -1,4 +1,4 @@
-// contracts/facets/DiamondLoupeFacet.sol
+// contracts/facets/DiamondLoupeFacet.sol (Corrected)
 
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.20;
@@ -19,8 +19,8 @@ contract DiamondLoupeFacet {
         uint256 numUniqueFacets = 0;
 
         for (uint256 i = 0; i < numSelectors; i++) {
-            // --- PERBAIKAN: Mengganti nama variabel lokal ---
-            address currentFacetAddress = address(uint160(uint256(ds.facetAddressAndSelectorPosition[ds.selectors[i]])));
+            // --- PERBAIKAN: Menggunakan `facetAddressForSelector` yang baru ---
+            address currentFacetAddress = ds.facetAddressForSelector[ds.selectors[i]];
             bool found = false;
             for (uint256 j = 0; j < numUniqueFacets; j++) {
                 if (uniqueFacetAddresses[j] == currentFacetAddress) {
@@ -36,7 +36,6 @@ contract DiamondLoupeFacet {
 
         facets_ = new Facet[](numUniqueFacets);
         for (uint256 i = 0; i < numUniqueFacets; i++) {
-            // --- PERBAIKAN: Mengganti nama variabel lokal ---
             address currentFacetAddress = uniqueFacetAddresses[i];
             bytes4[] memory selectors = facetFunctionSelectors(currentFacetAddress);
             facets_[i] = Facet(currentFacetAddress, selectors);
@@ -47,7 +46,8 @@ contract DiamondLoupeFacet {
         LibDiamond.DiamondStorage storage ds = LibDiamond.diamondStorage();
         uint256 selectorCount = 0;
         for (uint256 i = 0; i < ds.selectors.length; i++) {
-            if (address(uint160(uint256(ds.facetAddressAndSelectorPosition[ds.selectors[i]]))) == _facet) {
+            // --- PERBAIKAN: Menggunakan `facetAddressForSelector` yang baru ---
+            if (ds.facetAddressForSelector[ds.selectors[i]] == _facet) {
                 selectorCount++;
             }
         }
@@ -55,7 +55,8 @@ contract DiamondLoupeFacet {
         _facetFunctionSelectors = new bytes4[](selectorCount);
         uint256 currentSelectorIndex = 0;
         for (uint256 i = 0; i < ds.selectors.length; i++) {
-            if (address(uint160(uint256(ds.facetAddressAndSelectorPosition[ds.selectors[i]]))) == _facet) {
+            // --- PERBAIKAN: Menggunakan `facetAddressForSelector` yang baru ---
+            if (ds.facetAddressForSelector[ds.selectors[i]] == _facet) {
                 _facetFunctionSelectors[currentSelectorIndex] = ds.selectors[i];
                 currentSelectorIndex++;
             }
@@ -64,6 +65,7 @@ contract DiamondLoupeFacet {
 
     function facetAddress(bytes4 _functionSelector) external view returns (address facetAddress_) {
         LibDiamond.DiamondStorage storage ds = LibDiamond.diamondStorage();
-        facetAddress_ = address(uint160(uint256(ds.facetAddressAndSelectorPosition[_functionSelector])));
+        // --- PERBAIKAN: Menggunakan `facetAddressForSelector` yang baru ---
+        facetAddress_ = ds.facetAddressForSelector[_functionSelector];
     }
 }

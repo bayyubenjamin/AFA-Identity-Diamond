@@ -9,7 +9,7 @@ library LibDiamond {
     bytes32 constant DIAMOND_STORAGE_POSITION = keccak256("diamond.standard.diamond.storage");
 
     struct DiamondStorage {
-        mapping(bytes4 => bytes32) facetAddressAndSelectorPosition;
+        mapping(bytes4 => address) facetAddressForSelector;
         bytes4[] selectors;
         mapping(bytes4 => uint256) selectorIndices;
         address contractOwner;
@@ -29,20 +29,5 @@ library LibDiamond {
         assembly {
             s.slot := position
         }
-    }
-    
-    enum Action { Add, Replace, Remove }
-
-    struct FacetCut {
-        address facetAddress;
-        Action action;
-        bytes4[] functionSelectors;
-    }
-
-    event DiamondCut(FacetCut[] _diamondCut, address _init, bytes _calldata);
-
-    // --- PERBAIKAN: Mengubah modifier menjadi function ---
-    function enforceIsOwner() internal view {
-        require(msg.sender == diamondStorage().contractOwner, "LibDiamond: Must be contract owner");
     }
 }

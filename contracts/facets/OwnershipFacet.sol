@@ -1,4 +1,4 @@
-// contracts/facets/OwnershipFacet.sol
+// contracts/facets/OwnershipFacet.sol (Corrected)
 
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.20;
@@ -11,10 +11,11 @@ contract OwnershipFacet {
     }
 
     function transferOwnership(address _newOwner) external {
-        // --- PERBAIKAN: Memanggil fungsi internal untuk cek owner ---
-        LibDiamond.enforceIsOwner();
+        // --- PERBAIKAN: Melakukan cek owner secara langsung ---
+        LibDiamond.DiamondStorage storage ds = LibDiamond.diamondStorage();
+        require(msg.sender == ds.contractOwner, "OwnershipFacet: Must be contract owner");
         
         require(_newOwner != address(0), "Ownership: New owner is the zero address");
-        LibDiamond.diamondStorage().contractOwner = _newOwner;
+        ds.contractOwner = _newOwner;
     }
 }

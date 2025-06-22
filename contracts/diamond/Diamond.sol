@@ -1,46 +1,30 @@
-// contracts/diamond/Diamond.sol (Corrected Version)
+// contracts/diamond/Diamond.sol
 
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.20;
 
 import { LibDiamond } from "./libraries/LibDiamond.sol";
 
-// --- INI ADALAH BARIS PENTING YANG MEMPERBAIKI ERROR ---
-import { IDiamondCut } from "../facets/DiamondCutFacet.sol";
-
 contract Diamond {
-    constructor(address _contractOwner, IDiamondCut.FacetCut[] memory _diamondCut) payable {
-        LibDiamond.diamondStorage().contractOwner = _contractOwner;
+    // --- Structs and Events moved here from the library ---
+    enum FacetCutAction { Add, Replace, Remove }
 
-        // Dapatkan alamat DiamondCutFacet dari data potongan pertama
-        address diamondCutFacetAddress = address(0);
-        for (uint i = 0; i < _diamondCut.length; i++) {
-            // Kita asumsikan DiamondCutFacet ada di dalam initial cut
-            if (_diamondCut[i].functionSelectors.length > 0) {
-                diamondCutFacetAddress = _diamondCut[i].facetAddress;
-                break;
-            }
-        }
-        require(diamondCutFacetAddress != address(0), "Diamond: DiamondCutFacet not found in initial cut");
+    struct FacetCut {
+        address facetAddress;
+        FacetCutAction action;
+        bytes4[] functionSelectors;
+    }
 
-        // Encode pemanggilan fungsi `diamondCut`
-        bytes memory functionCall = abi.encodeWithSelector(
-            IDiamondCut.diamondCut.selector,
-            _diamondCut,
-            address(0),
-            ""
-        );
+    event DiamondCut(FacetCut[] _diamondCut, address _init, bytes _calldata);
 
-        // Lakukan delegatecall untuk menambahkan semua facet awal
-        (bool success, ) = diamondCutFacetAddress.delegatecall(functionCall);
-        require(success, "Diamond: initial diamond cut failed");
+    constructor(address _contractOwner) {
+        LibDiamond.DiamondStorage storage ds = LibDiamond.diamondStorage();
+        ds.contractOwner = _contractOwner;
     }
 
     fallback() external payable {
-        bytes32 facetAddressAndSelectorPosition = LibDiamond.diamondStorage().facetAddressAndSelectorPosition[msg.sig];
-        
-        address facetAddress = address(uint160(uint256(facetAddressAndSelectorPosition)));
-        
+        LibDiamond.DiamondStorage storage ds = LibDiamond.diamondStorage();
+        address facetAddress = ds.facetAddressForSelector[msg.sig];
         require(facetAddress != address(0), "Diamond: Function does not exist");
 
         assembly {
@@ -58,4 +42,64 @@ contract Diamond {
     }
 
     receive() external payable {}
+
+    // --- diamondCut logic is now part of the main Diamond contract ---
+    function diamondCut(
+        FacetCut[] memory _diamondCut,
+        address _init,
+        bytes memory _calldata
+    ) external {
+        LibDiamond.DiamondStorage storage ds = LibDiamond.diamondStorage();
+        require(msg.sender == ds.contractOwner, "Diamond: Must be owner to cut");
+
+        for (uint256 i = 0; i < _diamondCut.length; i++) {
+            FacetCutAction action = _diamondCut[i].action;
+            address facetAddress = _diamondCut[i].facetAddress;
+            bytes4[] memory functionSelectors = _diamondCut[i].functionSelectors;
+
+            if (action == FacetCutAction.Add) {
+                addFunctions(ds, functionSelectors, facetAddress);
+            } else if (action == FacetCutAction.Replace) {
+                replaceFunctions(ds, functionSelectors, facetAddress);
+            } else if (action == FacetCutAction.Remove) {
+                removeFunctions(ds, functionSelectors);
+            } else {
+                revert("DiamondCut: Incorrect Action");
+            }
+        }
+        
+        emit DiamondCut(_diamondCut, _init, _calldata);
+        initializeDiamondCut(_init, _calldata);
+    }
+
+    function addFunctions(LibDiamond.DiamondStorage storage ds, bytes4[] memory _functionSelectors, address _facetAddress) private {
+        for (uint256 i = 0; i < _functionSelectors.length; i++) {
+            bytes4 selector = _functionSelectors[i];
+            require(ds.facetAddressForSelector[selector] == address(0), "DiamondCut: Can't add function that already exists");
+            ds.facetAddressForSelector[selector] = _facetAddress;
+        }
+    }
+
+    function replaceFunctions(LibDiamond.DiamondStorage storage ds, bytes4[] memory _functionSelectors, address _facetAddress) private {
+        for (uint256 i = 0; i < _functionSelectors.length; i++) {
+            bytes4 selector = _functionSelectors[i];
+            require(ds.facetAddressForSelector[selector] != address(0), "DiamondCut: Can't replace function that doesn't exist");
+            ds.facetAddressForSelector[selector] = _facetAddress;
+        }
+    }
+
+    function removeFunctions(LibDiamond.DiamondStorage storage ds, bytes4[] memory _functionSelectors) private {
+        for (uint256 i = 0; i < _functionSelectors.length; i++) {
+            bytes4 selector = _functionSelectors[i];
+            require(ds.facetAddressForSelector[selector] != address(0), "DiamondCut: Can't remove function that doesn't exist");
+            delete ds.facetAddressForSelector[selector];
+        }
+    }
+
+    function initializeDiamondCut(address _init, bytes memory _calldata) private {
+        if (_init != address(0)) {
+            (bool success, ) = _init.delegatecall(_calldata);
+            require(success, "DiamondCut: _init call failed");
+        }
+    }
 }
