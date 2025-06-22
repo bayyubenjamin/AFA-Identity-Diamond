@@ -1,0 +1,26 @@
+{
+  "name": "afa-identity-diamond",
+  "version": "1.0.0",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "description": "",
+  "devDependencies": {
+    "@nomicfoundation/hardhat-toolbox": "^5.0.0",
+    "@types/mocha": "^10.0.10",
+    "@types/node": "^24.0.3",
+    "chai": "^4.5.0",
+    "dotenv": "^16.5.0",
+    "ethers": "^6.14.4",
+    "hardhat": "^2.24.3",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.8.3"
+  },
+  "dependencies": {
+    "@openzeppelin/contracts": "^5.3.0"
+  }
+}
