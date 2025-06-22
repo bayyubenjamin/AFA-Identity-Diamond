@@ -1,10 +1,12 @@
+// contracts/facets/AFA_ERC721_Facet.sol (Final Recommended Version)
+
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.20;
 
 import { LibDiamond } from "../diamond/libraries/LibDiamond.sol";
 import { AppStorage } from "../storage/AppStorage.sol";
 
-// --- PERBAIKAN: Menambahkan semua import yang dibutuhkan ---
+// --- Imports
 import "@openzeppelin/contracts/interfaces/IERC721Metadata.sol";
 import "@openzeppelin/contracts/interfaces/IERC721.sol";
 import "@openzeppelin/contracts/utils/introspection/IERC165.sol";
@@ -43,13 +45,11 @@ contract AFA_ERC721_Facet is IERC721Metadata {
         return owner;
     }
 
-    // --- PERBAIKAN: Mengubah external menjadi public ---
     function getApproved(uint256 tokenId) public view returns (address) {
         _requireMinted(tokenId);
         return LibDiamond.appStorage().tokenApprovals[tokenId];
     }
 
-    // --- PERBAIKAN: Mengubah external menjadi public ---
     function isApprovedForAll(address owner, address operator) public view returns (bool) {
         return LibDiamond.appStorage().operatorApprovals[owner][operator];
     }
@@ -61,7 +61,7 @@ contract AFA_ERC721_Facet is IERC721Metadata {
         address owner = ownerOf(tokenId);
         require(to != owner, "ERC721: approval to current owner");
         require(
-            msg.sender == owner || isApprovedForAll(owner, msg.sender), // Sekarang bisa dipanggil
+            msg.sender == owner || isApprovedForAll(owner, msg.sender),
             "ERC721: approve caller is not owner nor approved for all"
         );
         LibDiamond.appStorage().tokenApprovals[tokenId] = to;
@@ -104,11 +104,11 @@ contract AFA_ERC721_Facet is IERC721Metadata {
     // =============================================================
     //                    ERC165 SUPPORT
     // =============================================================
-    function supportsInterface(bytes4 interfaceId) external view returns (bool) {
+    function supportsInterface(bytes4 interfaceId) external pure returns (bool) { // <-- PERUBAHAN DI SINI
         return
-            interfaceId == type(IERC721).interfaceId || // Sekarang dikenali
+            interfaceId == type(IERC721).interfaceId ||
             interfaceId == type(IERC721Metadata).interfaceId ||
-            interfaceId == type(IERC165).interfaceId; // Sekarang dikenali
+            interfaceId == type(IERC165).interfaceId;
     }
 
     // =============================================================
@@ -117,19 +117,18 @@ contract AFA_ERC721_Facet is IERC721Metadata {
     function _isApprovedOrOwner(address spender, uint256 tokenId) internal view returns (bool) {
         address owner = ownerOf(tokenId);
         return (spender == owner ||
-            getApproved(tokenId) == spender || // Sekarang bisa dipanggil
-            isApprovedForAll(owner, spender)); // Sekarang bisa dipanggil
+            getApproved(tokenId) == spender ||
+            isApprovedForAll(owner, spender));
     }
 
     function _requireMinted(uint256 tokenId) internal view {
-        // Cukup gunakan ownerOf, karena sudah ada require di dalamnya
         ownerOf(tokenId);
     }
 
     function _checkOnERC721Received(address from, address to, uint256 tokenId, bytes memory data) private returns (bool) {
         if (to.code.length > 0) {
             try IERC721Receiver(to).onERC721Received(msg.sender, from, tokenId, data) returns (bytes4 retval) {
-                return retval == IERC721Receiver.onERC721Received.selector; // Sekarang dikenali
+                return retval == IERC721Receiver.onERC721Received.selector;
             } catch (bytes memory reason) {
                 if (reason.length == 0) {
                     revert("ERC721: transfer to non-ERC721Receiver implementer");

@@ -1,34 +1,52 @@
+// contracts/diamond/Diamond.sol (Corrected Version)
+
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.20;
 
 import { LibDiamond } from "./libraries/LibDiamond.sol";
 
-/// @title Diamond
-/// @notice The main proxy contract for the Diamond Standard (EIP-2535).
-/// It delegates all calls to the appropriate facet.
+// --- INI ADALAH BARIS PENTING YANG MEMPERBAIKI ERROR ---
+import { IDiamondCut } from "../facets/DiamondCutFacet.sol";
+
 contract Diamond {
-    constructor(address _contractOwner) payable {
+    constructor(address _contractOwner, IDiamondCut.FacetCut[] memory _diamondCut) payable {
         LibDiamond.diamondStorage().contractOwner = _contractOwner;
+
+        // Dapatkan alamat DiamondCutFacet dari data potongan pertama
+        address diamondCutFacetAddress = address(0);
+        for (uint i = 0; i < _diamondCut.length; i++) {
+            // Kita asumsikan DiamondCutFacet ada di dalam initial cut
+            if (_diamondCut[i].functionSelectors.length > 0) {
+                diamondCutFacetAddress = _diamondCut[i].facetAddress;
+                break;
+            }
+        }
+        require(diamondCutFacetAddress != address(0), "Diamond: DiamondCutFacet not found in initial cut");
+
+        // Encode pemanggilan fungsi `diamondCut`
+        bytes memory functionCall = abi.encodeWithSelector(
+            IDiamondCut.diamondCut.selector,
+            _diamondCut,
+            address(0),
+            ""
+        );
+
+        // Lakukan delegatecall untuk menambahkan semua facet awal
+        (bool success, ) = diamondCutFacetAddress.delegatecall(functionCall);
+        require(success, "Diamond: initial diamond cut failed");
     }
 
-    /// @notice The fallback function is the heart of the diamond. It delegates calls
-    /// to the correct facet using `delegatecall`.
     fallback() external payable {
         bytes32 facetAddressAndSelectorPosition = LibDiamond.diamondStorage().facetAddressAndSelectorPosition[msg.sig];
         
-        // Extract the facet address (first 20 bytes of the 32-byte slot)
         address facetAddress = address(uint160(uint256(facetAddressAndSelectorPosition)));
         
         require(facetAddress != address(0), "Diamond: Function does not exist");
 
         assembly {
-            // Copy msg.data to memory
             calldatacopy(0, 0, calldatasize())
-            // Execute the function from the facet using delegatecall
             let result := delegatecall(gas(), facetAddress, 0, calldatasize(), 0, 0)
-            // Copy the return data
             returndatacopy(0, 0, returndatasize())
-            // Revert if the call failed, otherwise return the result
             switch result
             case 0 {
                 revert(0, returndatasize())

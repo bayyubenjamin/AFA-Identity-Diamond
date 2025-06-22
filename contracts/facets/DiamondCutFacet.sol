@@ -1,20 +1,27 @@
+// contracts/facets/DiamondCutFacet.sol (Corrected)
+
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.20;
 
 import { LibDiamond } from "../diamond/libraries/LibDiamond.sol";
 
-/// @title DiamondCutFacet
-/// @notice Manages adding, replacing, and removing functions/facets from the diamond.
-contract DiamondCutFacet {
-    /// @notice The core function for upgrading the diamond.
-    /// @param _diamondCut An array of FacetCut structs describing the changes.
-    /// @param _init The address of a contract to call for initialization after the cut.
-    /// @param _calldata The data to pass to the initialization function.
+// Definisikan interface agar bisa di-import oleh kontrak lain
+interface IDiamondCut {
     function diamondCut(
         LibDiamond.FacetCut[] memory _diamondCut,
         address _init,
         bytes memory _calldata
-    ) external LibDiamond.enforceIsOwner {
+    ) external;
+}
+
+contract DiamondCutFacet is IDiamondCut {
+    function diamondCut(
+        LibDiamond.FacetCut[] memory _diamondCut,
+        address _init,
+        bytes memory _calldata
+    ) external override {
+        LibDiamond.enforceIsOwner();
+
         LibDiamond.DiamondStorage storage ds = LibDiamond.diamondStorage();
         for (uint256 i = 0; i < _diamondCut.length; i++) {
             LibDiamond.Action action = _diamondCut[i].action;
@@ -33,7 +40,7 @@ contract DiamondCutFacet {
         }
         
         emit LibDiamond.DiamondCut(_diamondCut, _init, _calldata);
-        initializeDiamondCut(ds, _init, _calldata);
+        initializeDiamondCut(_init, _calldata);
     }
 
     function addFunctions(LibDiamond.DiamondStorage storage ds, bytes4[] memory _functionSelectors, address _facetAddress) private {
@@ -45,7 +52,7 @@ contract DiamondCutFacet {
             ds.selectors.push(selector);
             uint256 selectorIndex = ds.selectors.length - 1;
             ds.selectorIndices[selector] = selectorIndex;
-            ds.facetAddressAndSelectorPosition[selector] = bytes32(uint256(uint160(_facetAddress))) | (selectorIndex << 160);
+            ds.facetAddressAndSelectorPosition[selector] = bytes32((uint256(uint160(_facetAddress))) | (selectorIndex << 160));
         }
     }
 
@@ -56,7 +63,7 @@ contract DiamondCutFacet {
             require(address(uint160(uint256(oldFacetAddressAndSelectorPosition))) != address(0), "DiamondCut: Can't replace function that doesn't exist");
             
             uint256 selectorIndex = ds.selectorIndices[selector];
-            ds.facetAddressAndSelectorPosition[selector] = bytes32(uint256(uint160(_facetAddress))) | (selectorIndex << 160);
+            ds.facetAddressAndSelectorPosition[selector] = bytes32((uint256(uint160(_facetAddress))) | (selectorIndex << 160));
         }
     }
 
@@ -79,7 +86,7 @@ contract DiamondCutFacet {
         }
     }
 
-    function initializeDiamondCut(LibDiamond.DiamondStorage storage /*ds*/, address _init, bytes memory _calldata) private {
+    function initializeDiamondCut(address _init, bytes memory _calldata) private {
         if (_init != address(0)) {
             (bool success, ) = _init.delegatecall(_calldata);
             require(success, "DiamondCut: _init call failed");

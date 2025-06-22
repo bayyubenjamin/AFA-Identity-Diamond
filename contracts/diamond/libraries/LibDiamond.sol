@@ -1,11 +1,10 @@
+// contracts/diamond/libraries/LibDiamond.sol
+
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.20;
 
 import { AppStorage } from "../../storage/AppStorage.sol";
 
-/// @title LibDiamond
-/// @author Nick Mudge <nick@moodge.dev> (modified for AFA)
-/// @notice Library for diamond storage and events, based on EIP-2535.
 library LibDiamond {
     bytes32 constant DIAMOND_STORAGE_POSITION = keccak256("diamond.standard.diamond.storage");
 
@@ -32,7 +31,6 @@ library LibDiamond {
         }
     }
     
-    // CORRECT ORDER: Define enum and struct BEFORE they are used in the event.
     enum Action { Add, Replace, Remove }
 
     struct FacetCut {
@@ -43,8 +41,8 @@ library LibDiamond {
 
     event DiamondCut(FacetCut[] _diamondCut, address _init, bytes _calldata);
 
-    modifier enforceIsOwner() {
+    // --- PERBAIKAN: Mengubah modifier menjadi function ---
+    function enforceIsOwner() internal view {
         require(msg.sender == diamondStorage().contractOwner, "LibDiamond: Must be contract owner");
-        _;
     }
 }
