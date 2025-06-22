@@ -4,11 +4,11 @@ import { ethers } from "hardhat";
 import { expect } from "chai";
 import { Contract, ContractFactory, id } from "ethers";
 import { SignerWithAddress } from "@nomicfoundation/hardhat-ethers/signers";
-import { FacetCutAction, getSelectors } from "../scripts/libraries/diamond";
+import { getSelectors } from "../scripts/libraries/diamond";
 import { DiamondInit, FacetNames } from "../diamondConfig";
 
 describe("AFA Identity Diamond Tests", function () {
-    let diamond: Contract; // Now we interact with the diamond contract directly
+    let diamond: Contract;
     let diamondAddress: string;
     let ownershipFacet: Contract;
     let erc721Facet: Contract;
@@ -30,14 +30,12 @@ describe("AFA Identity Diamond Tests", function () {
         [owner, user1, user2] = await ethers.getSigners();
         admin = owner;
 
-        // 1. Deploy the main Diamond contract
         const DiamondFactory: ContractFactory = await ethers.getContractFactory("Diamond");
         const diamondContract = await DiamondFactory.deploy(owner.address);
         await diamondContract.waitForDeployment();
         diamondAddress = await diamondContract.getAddress();
         diamond = await ethers.getContractAt("Diamond", diamondAddress);
 
-        // 2. Deploy Facets
         const cut = [];
         const facetContracts: { [key: string]: Contract } = {};
         for (const facetName of FacetNames) {
@@ -52,7 +50,6 @@ describe("AFA Identity Diamond Tests", function () {
             });
         }
         
-        // 3. Perform the first diamondCut to add all facets
         const initFacetContract = facetContracts[DiamondInit];
         const functionCall = initFacetContract.interface.encodeFunctionData("initialize", [
             "AFA Identity",
@@ -62,14 +59,12 @@ describe("AFA Identity Diamond Tests", function () {
         
         await diamond.connect(owner).diamondCut(cut, await initFacetContract.getAddress(), functionCall);
 
-        // 4. Attach facet ABIs to the diamond address for testing
         ownershipFacet = await ethers.getContractAt("OwnershipFacet", diamondAddress);
         erc721Facet = await ethers.getContractAt("AFA_ERC721_Facet", diamondAddress);
         adminFacet = await ethers.getContractAt("AFA_Admin_Facet", diamondAddress);
         profileFacet = await ethers.getContractAt("AFA_Profile_Facet", diamondAddress);
     });
 
-    // ... sisa dari test cases Anda bisa tetap sama ...
     describe("Admin Facet", function() {
         it("should have correct owner set during initialization", async function() {
             expect(await ownershipFacet.owner()).to.equal(owner.address);
@@ -86,9 +81,33 @@ describe("AFA Identity Diamond Tests", function () {
 
         it("should NOT allow a non-admin to mint an identity", async function() {
             const proofHash = id("proof_for_user2");
+            // --- PERBAIKAN DI SINI ---
+            // Ekspektasi diubah agar sesuai dengan pesan error dari modifier 'onlyAdmin'
             await expect(
                 adminFacet.connect(user1).mintIdentity(user2.address, "usertwo", "ipfs://meta2", proofHash)
-            ).to.be.revertedWith("Diamond: Must be owner to cut"); // Reverted by diamondCut owner check
+            ).to.be.revertedWith("AFA: Must be admin");
+        });
+    });
+
+    describe("Profile Facet", function() {
+        beforeEach(async function() {
+            const proofHash = id("proof_for_user1_profile_tests");
+            await adminFacet.connect(admin).mintIdentity(user1.address, "userone", "ipfs://meta1", proofHash);
+        });
+
+        it("should allow user to get their own token ID", async function() {
+            expect(await profileFacet.connect(user1).getMyTokenId()).to.equal(1);
+        });
+
+        it("should allow user to burn their own identity", async function() {
+            const tokenId = await profileFacet.connect(user1).getMyTokenId();
+            expect(tokenId).to.equal(1);
+
+            await expect(profileFacet.connect(user1).burnMyIdentity())
+                .to.emit(erc721Facet, "Transfer")
+                .withArgs(user1.address, ethers.ZeroAddress, tokenId);
+            
+            await expect(erc721Facet.ownerOf(tokenId)).to.be.revertedWith("ERC721: invalid token ID");
         });
     });
 });
