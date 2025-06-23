@@ -1,49 +1,60 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.20;
+pragma solidity ^0.8.24;
 
-import "@openzeppelin/contracts/utils/Strings.sol";
-import "../libraries/DiamondStorage.sol";
-import "../interfaces/IERC721.sol";
+import {AppStorage} from "../libraries/DiamondStorage.sol";
+import {IDiamondLoupe} from "../interfaces/IDiamondLoupe.sol";
+import {IERC165} from "@openzeppelin/contracts/utils/introspection/IERC165.sol";
 
-contract IdentityCoreFacet is IERC721 {
+/**
+ * @title IdentityCoreFacet
+ * @notice Mengelola fungsi inti NFT seperti URI dan kepemilikan.
+ */
+contract IdentityCoreFacet {
     AppStorage internal s;
 
-    // --- ERC721 View Functions ---
-    function name() external pure returns (string memory) {
-        return "AFA Identity";
+    /**
+     * @dev Ini adalah implementasi standar EIP-165.
+     * Menggunakan loupe untuk memeriksa apakah diamond mendukung interfaceId tertentu.
+     */
+    function supportsInterface(bytes4 interfaceId) external view returns (bool) {
+        return IERC165(address(this)).supportsInterface(interfaceId);
     }
-
-    function symbol() external pure returns (string memory) {
-        return "AFAID";
-    }
-
+    
     function ownerOf(uint256 tokenId) public view returns (address) {
         address owner = s._tokenIdToAddress[tokenId];
         require(owner != address(0), "ERC721: owner query for nonexistent token");
         return owner;
     }
+
+    function baseURI() public view returns (string memory) {
+        return s.baseURI;
+    }
     
-    // --- Metadata Logic ---
-    // This function will be called by marketplaces like OpenSea.
-    // It constructs a URL pointing to your backend (e.g., https://api.yourproject.com/metadata/1)
-    // Your backend will then dynamically generate the JSON with the global image and unique traits.
-    function tokenURI(uint256 tokenId) external view returns (string memory) {
-        require(s._tokenIdToAddress[tokenId] != address(0), "ERC721URIStorage: URI query for nonexistent token");
-        string memory currentBaseURI = s.baseURI;
+    function tokenURI(uint256 tokenId) public view returns (string memory) {
+        require(s._tokenIdToAddress[tokenId] != address(0), "ERC721: URI query for nonexistent token");
+
+        string memory currentBaseURI = baseURI();
         return bytes(currentBaseURI).length > 0
-            ? string(abi.encodePacked(currentBaseURI, Strings.toString(tokenId)))
+            ? string(abi.encodePacked(currentBaseURI, _toString(tokenId)))
             : "";
     }
-
-    // --- Admin Function ---
-    function setBaseURI(string memory _newBaseURI) external {
-        require(msg.sender == s.contractOwner, "AFA: Must be admin");
-        s.baseURI = _newBaseURI;
+    
+    function _toString(uint256 value) internal pure returns (string memory) {
+        if (value == 0) {
+            return "0";
+        }
+        uint256 temp = value;
+        uint256 digits;
+        while (temp != 0) {
+            digits++;
+            temp /= 10;
+        }
+        bytes memory buffer = new bytes(digits);
+        while (value != 0) {
+            digits -= 1;
+            buffer[digits] = bytes1(uint8(48 + uint256(value % 10)));
+            value /= 10;
+        }
+        return string(buffer);
     }
-    
-    // --- Soulbound Logic ---
-    // Transfers are disabled by not implementing transfer functions like transferFrom, safeTransferFrom.
-    // The internal _mint and _burn functions will be handled by the SubscriptionManagerFacet.
-    
-    // Implementation of other required ERC721 and ERC165 functions...
 }
