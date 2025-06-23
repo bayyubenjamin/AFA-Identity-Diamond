@@ -1,5 +1,3 @@
-// scripts/deploy.ts
-
 import { ethers } from "hardhat";
 import { getSelectors } from "./libraries/diamond";
 import { DiamondInit, FacetNames } from "../diamondConfig";
@@ -8,8 +6,13 @@ async function main() {
     const [deployer] = await ethers.getSigners();
     console.log("Deploying contracts with the account:", deployer.address);
     
-    const VERIFIER_ADDRESS = "0x..."; // ISI ALAMAT BACKEND VERIFIER ANDA DI SINI
-    const BASE_URI = "https://api.yourproject.com/metadata/"; // ISI BASE URI API METADATA ANDA
+    // --- PERBAIKAN UTAMA DI SINI ---
+    // Kita tidak lagi menggunakan placeholder "0x...".
+    // Untuk development, kita gunakan alamat deployer sebagai verifier.
+    const VERIFIER_ADDRESS = deployer.address; 
+    const BASE_URI = "https://api.afa-weeb3tool.com/metadata/"; // Anda bisa mengubah ini nanti
+
+    console.log(`✅ Verifier Address telah diatur ke: ${VERIFIER_ADDRESS}`);
 
     // 1. Deploy Diamond
     const DiamondFactory = await ethers.getContractFactory("Diamond");
@@ -36,15 +39,15 @@ async function main() {
         });
     }
 
-    // 3. Prepare initializer call for the new initializer facet
-    const initFacetContract = facetContracts[DiamondInit]; // Now 'SubscriptionManagerFacet'
+    // 3. Prepare initializer call
+    const initFacetContract = facetContracts[DiamondInit];
     const functionCall = initFacetContract.interface.encodeFunctionData("initialize", [
-        VERIFIER_ADDRESS,
+        VERIFIER_ADDRESS, // Sekarang menggunakan alamat yang valid
         BASE_URI,
     ]);
 
     // 4. Perform diamondCut
-    const diamond = await ethers.getContractAt("Diamond", diamondAddress);
+    const diamond = await ethers.getContractAt("IDiamondCut", diamondAddress);
     console.log("\nPerforming diamond cut and initialization...");
     const tx = await diamond.connect(deployer).diamondCut(
         cut, 
@@ -58,9 +61,9 @@ async function main() {
     // Final check
     const identityCore = await ethers.getContractAt("IdentityCoreFacet", diamondAddress);
     console.log(`\n--- Deployment Successful ---`);
+    console.log(`Diamond Address: ${diamondAddress}`);
     console.log(`NFT Name: ${await identityCore.name()}`);
     console.log(`NFT Symbol: ${await identityCore.symbol()}`);
-    console.log(`Base URI: ${await identityCore.baseURI()}`);
     console.log(`-----------------------------`);
 }
 

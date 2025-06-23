@@ -2,79 +2,50 @@
 pragma solidity ^0.8.24;
 
 import "../libraries/DiamondStorage.sol";
-import "../interfaces/AggregatorV3Interface.sol"; // Pastikan file ini ada
+import "../interfaces/IOwnershipFacet.sol";
+import "../interfaces/AggregatorV3Interface.sol";
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
-import "@openzeppelin/contracts/utils/cryptography/EIP712.sol";
-import "@openzeppelin/contracts/utils/cryptography/ECDSA.sol";
 
-contract SubscriptionManagerFacet is EIP712 {
-    using ECDSA for bytes32;
+contract SubscriptionManagerFacet {
+    DiamondStorage internal s;
 
-    AppStorage internal s;
-    uint256 private _nextTokenId;
-
-    // --- Events ---
     event IdentityMinted(address indexed user, uint256 indexed tokenId);
     event SubscriptionRenewed(uint256 indexed tokenId, uint256 newExpiration);
 
     /**
-     * @dev Panggil konstruktor EIP712 dengan nama dan versi DApp Anda.
-     * Ini penting untuk keamanan tanda tangan (signature).
-     */
-    constructor() EIP712("AFA-Identity-Diamond", "1") {}
-
-    /**
-     * @notice Inisialisasi parameter awal untuk diamond.
-     * @dev Hanya bisa dipanggil sekali oleh deployer.
+     * @notice Initializes the diamond with core settings.
+     * @dev Can only be called once. The caller of diamondCut becomes the owner.
+     * @param _verifierAddress The address of the backend server authorized to sign minting messages.
+     * @param _baseURI The base URI for the token metadata.
      */
     function initialize(address _verifierAddress, string memory _baseURI) external {
-        require(s.contractOwner == address(0), "Already initialized");
-        s.contractOwner = msg.sender;
+        require(s.verifierAddress == address(0), "Already initialized");
         s.verifierAddress = _verifierAddress;
         s.baseURI = _baseURI;
     }
 
     // --- Admin Functions ---
+    // NOTE: These functions are placeholders and need full implementation.
+    // They should check for ownership using IOwnershipFacet.
     function setPriceInUSD(uint256 _priceInCents) external {
-        require(msg.sender == s.contractOwner, "AFA: Must be owner");
+        require(msg.sender == IOwnershipFacet(address(this)).owner(), "AFA: Must be admin");
         s.priceInUSD = _priceInCents;
     }
 
     // --- Public Mint & Renew Functions ---
+    // NOTE: These functions are placeholders and need full implementation.
     function mintIdentity(bytes calldata _signature) external payable {
-        // 1. Check if user already has an identity
-        require(s._addressToTokenId[msg.sender] == 0, "User already has an identity");
-
-        // 2. Verify signature
-        bytes32 digest = _hashTypedDataV4(keccak256(abi.encode(msg.sender)));
-        address signer = digest.recover(_signature);
-        require(signer == s.verifierAddress, "Invalid signature");
-        require(signer != address(0), "Invalid signature: zero address");
-
-        // 3. Process payment (logika placeholder)
-        _processPayment();
-
-        // 4. Mint NFT and set attestation
-        uint256 tokenId = ++_nextTokenId;
-        s._addressToTokenId[msg.sender] = tokenId;
-        s._tokenIdToAddress[tokenId] = msg.sender;
-        
-        // Membuat atestasi premium selama 1 tahun
-        s.premiumStatus[tokenId] = Attestation({
-            expirationTimestamp: block.timestamp + 365 days,
-            issuer: address(this)
-        });
-
-        emit IdentityMinted(msg.sender, tokenId);
+        // Full implementation will include:
+        // 1. Signature verification
+        // 2. Payment processing
+        // 3. Minting logic (as seen in TestingAdminFacet)
+        revert("Not implemented");
     }
 
-    // --- Private Helper Functions ---
-    function _processPayment() private {
-        // Logika untuk memeriksa msg.value terhadap harga dari oracle Chainlink
-        // atau menangani pembayaran token ERC20.
-        // Implementasi ini sangat bergantung pada kebutuhan spesifik Anda.
-        // Contoh:
-        // uint256 priceInEth = getPriceFromOracle();
-        // require(msg.value >= priceInEth, "Insufficient payment");
+    function renewSubscription(uint256 tokenId) external payable {
+        // Full implementation will include:
+        // 1. Payment processing
+        // 2. Updating attestation timestamp
+        revert("Not implemented");
     }
 }
