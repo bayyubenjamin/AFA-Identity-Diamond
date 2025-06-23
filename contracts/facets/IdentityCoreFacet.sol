@@ -76,4 +76,9 @@ contract IdentityCoreFacet is IERC721Metadata {
             interfaceId == type(IERC721Metadata).interfaceId ||
             interfaceId == type(IDiamondLoupe).interfaceId;
     }
+    
+    function initialize(address verifier, string memory _baseURI) external {
+    s.verifierAddress = verifier;
+    s.baseURI = _baseURI;
+    }
 }

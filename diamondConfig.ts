@@ -1,7 +1,7 @@
 // diamondConfig.ts
 
-// The initializer function will be called on the SubscriptionManagerFacet
-export const DiamondInit = 'SubscriptionManagerFacet';
+// The initializer function will be called on the IdentityCoreFacet
+export const DiamondInit = "IdentityCoreFacet";
 
 // The list of all facets to be deployed and added to the diamond
 export const FacetNames = [
@@ -16,3 +16,4 @@ export const FacetNames = [
     'SubscriptionManagerFacet',   // Manages pricing, payments, signature verification, and the main minting logic
     'TestingAdminFacet'           // Contains admin-only functions for testing, like minting without payment/signature
 ];
+
