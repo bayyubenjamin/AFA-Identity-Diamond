@@ -1,14 +1,19 @@
-pragma solidity ^0.8.20;
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.24;
 
-import { AppStorage } from "../../storage/AppStorage.sol";
+import {IDiamondCut} from "../../interfaces/IDiamondCut.sol";
 
 library LibDiamond {
     bytes32 constant DIAMOND_STORAGE_POSITION = keccak256("diamond.standard.diamond.storage");
 
     struct DiamondStorage {
-        mapping(bytes4 => address) facetAddressForSelector;
+        // mapping dari selector fungsi ke alamat facet
+        mapping(bytes4 => address) facetAddress;
+        // array dari semua selector fungsi yang ada di diamond
         bytes4[] selectors;
-        mapping(bytes4 => uint256) selectorIndices;
+        // mapping dari selector fungsi ke posisinya di dalam array selectors
+        mapping(bytes4 => uint256) selectorPosition;
+        // alamat pemilik kontrak
         address contractOwner;
     }
 
@@ -18,13 +23,19 @@ library LibDiamond {
             ds.slot := position
         }
     }
+    
+    event DiamondCut(IDiamondCut.FacetCut[] _diamondCut, address _init, bytes _calldata);
+    
+    function setContractOwner(address _owner) internal {
+        DiamondStorage storage ds = diamondStorage();
+        ds.contractOwner = _owner;
+    }
 
-    bytes32 constant APP_STORAGE_POSITION = keccak256("afa.identity.app.storage");
+    function contractOwner() internal view returns (address owner_) {
+        owner_ = diamondStorage().contractOwner;
+    }
 
-    function appStorage() internal pure returns (AppStorage storage s) {
-        bytes32 position = APP_STORAGE_POSITION;
-        assembly {
-            s.slot := position
-        }
+    function enforceIsOwner() internal view {
+        require(msg.sender == diamondStorage().contractOwner, "LibDiamond: Must be contract owner");
     }
 }

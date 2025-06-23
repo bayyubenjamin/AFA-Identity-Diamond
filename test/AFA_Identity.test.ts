@@ -2,15 +2,15 @@
 
 import { ethers } from "hardhat";
 import { expect } from "chai";
-import { Contract, ContractFactory, id } from "ethers";
+import { Contract, ContractFactory } from "ethers";
 import { SignerWithAddress } from "@nomicfoundation/hardhat-ethers/signers";
 import { getSelectors } from "../scripts/libraries/diamond";
-import { DiamondInit, FacetNames } from "../diamondConfig"; // Pastikan path ini benar
+import { DiamondInit, FacetNames } from "../diamondConfig";
 
 describe("AFA Identity Diamond Tests", function () {
     let diamondAddress: string;
     let ownershipFacet: Contract;
-    let testingAdminFacet: Contract; // Kita akan menggunakan facet testing
+    let testingAdminFacet: Contract;
     let attestationFacet: Contract;
     let identityCoreFacet: Contract;
 
@@ -19,48 +19,61 @@ describe("AFA Identity Diamond Tests", function () {
     let user1: SignerWithAddress;
     let user2: SignerWithAddress;
 
-    const FacetCut = {
-        Add: 0,
-        Replace: 1,
-        Remove: 2
-    };
+    const FacetCutAction = { Add: 0, Replace: 1, Remove: 2 };
 
     beforeEach(async function () {
         [owner, user1, user2] = await ethers.getSigners();
         admin = owner;
 
+        // --- PERBAIKAN DI SINI ---
+        // 1. Deploy DiamondCutFacet terlebih dahulu karena dibutuhkan oleh konstruktor Diamond
+        const DiamondCutFacetFactory = await ethers.getContractFactory("DiamondCutFacet");
+        const diamondCutFacet = await DiamondCutFacetFactory.deploy();
+        await diamondCutFacet.waitForDeployment();
+
+        // 2. Deploy Diamond dengan DUA argumen yang benar
         const DiamondFactory: ContractFactory = await ethers.getContractFactory("Diamond");
-        const diamondContract = await DiamondFactory.deploy(owner.address);
+        const diamondContract = await DiamondFactory.deploy(owner.address, await diamondCutFacet.getAddress());
         await diamondContract.waitForDeployment();
         diamondAddress = await diamondContract.getAddress();
         
+        // 3. Deploy sisa facet lainnya
         const cut = [];
-        const facetContracts: { [key: string]: Contract } = {};
-        for (const facetName of FacetNames) {
+        const facetContracts: { [key: string]: Contract } = {
+            'DiamondCutFacet': diamondCutFacet // Masukkan yang sudah di-deploy
+        };
+        
+        const otherFacetNames = FacetNames.filter(name => name !== 'DiamondCutFacet');
+
+        for (const facetName of otherFacetNames) {
             const FacetFactory: ContractFactory = await ethers.getContractFactory(facetName);
             const facet = await FacetFactory.deploy();
             await facet.waitForDeployment();
             facetContracts[facetName] = facet;
-            cut.push({
-                facetAddress: await facet.getAddress(),
-                action: FacetCut.Add,
-                functionSelectors: getSelectors(facet as any), // Cast as any to bypass potential type issues
+        }
+
+        // Siapkan 'cut' untuk semua facet (termasuk DiamondCutFacet)
+        for (const facetName of FacetNames) {
+             cut.push({
+                facetAddress: await facetContracts[facetName].getAddress(),
+                action: FacetCutAction.Add,
+                functionSelectors: getSelectors(facetContracts[facetName]),
             });
         }
         
-        const initFacetContract = facetContracts[DiamondInit]; // Ini adalah SubscriptionManagerFacet
-
-        // --- PERBAIKAN DI SINI ---
-        // Panggil `initialize` dengan argumen yang benar (verifierAddress, baseURI)
-        const verifierAddressForTest = admin.address; // Untuk tes, kita gunakan alamat admin
+        const initFacetContract = facetContracts[DiamondInit];
+        const verifierAddressForTest = admin.address;
         const baseURIForTest = "https://test.api.afa.io/metadata/";
         const functionCall = initFacetContract.interface.encodeFunctionData("initialize", [
             verifierAddressForTest,
             baseURIForTest
         ]);
         
-        const diamond = await ethers.getContractAt("IDiamondCut", diamondAddress);
-        await diamond.connect(owner).diamondCut(cut, await initFacetContract.getAddress(), functionCall);
+        const diamondCutInstance = await ethers.getContractAt("IDiamondCut", diamondAddress);
+        // Hapus selector diamondCut dari cut karena sudah ditambahkan di constructor
+        cut[0].functionSelectors = []; 
+
+        await diamondCutInstance.connect(owner).diamondCut(cut, await initFacetContract.getAddress(), functionCall);
 
         // Update instance kontrak untuk testing
         ownershipFacet = await ethers.getContractAt("OwnershipFacet", diamondAddress);
@@ -69,21 +82,18 @@ describe("AFA Identity Diamond Tests", function () {
         identityCoreFacet = await ethers.getContractAt("IdentityCoreFacet", diamondAddress);
     });
 
-    // --- SESUAIKAN TES ANDA DENGAN FUNGSI BARU ---
+    // ... sisa tes Anda tidak perlu diubah ...
     describe("TestingAdminFacet", function() {
         it("should have correct owner set during initialization", async function() {
             expect(await ownershipFacet.owner()).to.equal(owner.address);
         });
         
         it("should allow admin to mint an identity for a user using adminMint", async function() {
-            // Kita sekarang menggunakan fungsi adminMint dari TestingAdminFacet
             await expect(testingAdminFacet.connect(admin).adminMint(user1.address))
-                .to.emit(testingAdminFacet, "AdminIdentityMinted") // Event baru
+                .to.emit(testingAdminFacet, "AdminIdentityMinted")
                 .withArgs(user1.address, 1);
 
             expect(await identityCoreFacet.ownerOf(1)).to.equal(user1.address);
-            
-            // Cek juga status premiumnya
             expect(await attestationFacet.isPremium(1)).to.be.true;
         });
 

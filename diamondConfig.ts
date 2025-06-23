@@ -6,6 +6,7 @@ export const DiamondInit = 'SubscriptionManagerFacet';
 // The list of all facets to be deployed and added to the diamond
 export const FacetNames = [
     // Standard Diamond facets for introspection and ownership
+    'DiamondCutFacet',
     'DiamondLoupeFacet',
     'OwnershipFacet',
     

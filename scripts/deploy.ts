@@ -6,50 +6,62 @@ async function main() {
     const [deployer] = await ethers.getSigners();
     console.log("Deploying contracts with the account:", deployer.address);
     
+    const VERIFIER_ADDRESS = deployer.address;
+    const BASE_URI = "https://api.afa-weeb3tool.com/metadata/";
+
+    console.log(`✅ Verifier Address will be set to: ${VERIFIER_ADDRESS}`);
+
     // --- PERBAIKAN UTAMA DI SINI ---
-    // Kita tidak lagi menggunakan placeholder "0x...".
-    // Untuk development, kita gunakan alamat deployer sebagai verifier.
-    const VERIFIER_ADDRESS = deployer.address; 
-    const BASE_URI = "https://api.afa-weeb3tool.com/metadata/"; // Anda bisa mengubah ini nanti
+    // 1. Deploy DiamondCutFacet terlebih dahulu.
+    const DiamondCutFacetFactory = await ethers.getContractFactory("DiamondCutFacet");
+    const diamondCutFacet = await DiamondCutFacetFactory.deploy();
+    await diamondCutFacet.waitForDeployment();
+    console.log(`- DiamondCutFacet deployed to: ${await diamondCutFacet.getAddress()}`);
 
-    console.log(`✅ Verifier Address telah diatur ke: ${VERIFIER_ADDRESS}`);
-
-    // 1. Deploy Diamond
+    // 2. Deploy Diamond dengan DUA argumen yang benar.
     const DiamondFactory = await ethers.getContractFactory("Diamond");
-    const diamondContract = await DiamondFactory.deploy(deployer.address);
+    const diamondContract = await DiamondFactory.deploy(deployer.address, await diamondCutFacet.getAddress());
     await diamondContract.waitForDeployment();
     const diamondAddress = await diamondContract.getAddress();
     console.log("💎 Diamond proxy deployed to:", diamondAddress);
 
-    // 2. Deploy Facets
-    console.log("\nDeploying facets...");
+    // 3. Deploy sisa facet lainnya.
+    console.log("\nDeploying other facets...");
     const cut = [];
-    const facetContracts: { [key: string]: any } = {};
-    for (const facetName of FacetNames) {
+    const facetContracts: { [key: string]: any } = {
+        'DiamondCutFacet': diamondCutFacet
+    };
+
+    // Filter DiamondCutFacet karena sudah di-deploy
+    const otherFacetNames = FacetNames.filter(name => name !== 'DiamondCutFacet');
+    for (const facetName of otherFacetNames) {
         const FacetFactory = await ethers.getContractFactory(facetName);
         const facet = await FacetFactory.deploy();
         await facet.waitForDeployment();
         facetContracts[facetName] = facet;
-        
         console.log(`- ${facetName} deployed to: ${await facet.getAddress()}`);
-        cut.push({
-            facetAddress: await facet.getAddress(),
+    }
+
+    // Siapkan 'cut' untuk semua facet KECUALI DiamondCutFacet (karena sudah ditambahkan di constructor)
+    for (const facetName of otherFacetNames) {
+         cut.push({
+            facetAddress: await facetContracts[facetName].getAddress(),
             action: 0, // FacetCutAction.Add
-            functionSelectors: getSelectors(facet),
+            functionSelectors: getSelectors(facetContracts[facetName]),
         });
     }
 
-    // 3. Prepare initializer call
+    // 4. Prepare initializer call
     const initFacetContract = facetContracts[DiamondInit];
     const functionCall = initFacetContract.interface.encodeFunctionData("initialize", [
-        VERIFIER_ADDRESS, // Sekarang menggunakan alamat yang valid
+        VERIFIER_ADDRESS,
         BASE_URI,
     ]);
 
-    // 4. Perform diamondCut
-    const diamond = await ethers.getContractAt("IDiamondCut", diamondAddress);
+    // 5. Perform diamondCut
+    const diamondCutInstance = await ethers.getContractAt("IDiamondCut", diamondAddress);
     console.log("\nPerforming diamond cut and initialization...");
-    const tx = await diamond.connect(deployer).diamondCut(
+    const tx = await diamondCutInstance.connect(deployer).diamondCut(
         cut, 
         await initFacetContract.getAddress(), 
         functionCall

@@ -1,71 +1,85 @@
-// contracts/facets/DiamondLoupeFacet.sol (Corrected)
-
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.20;
+pragma solidity ^0.8.24;
 
-import { LibDiamond } from "../diamond/libraries/LibDiamond.sol";
+import {LibDiamond} from "../diamond/libraries/LibDiamond.sol";
+import {IDiamondLoupe} from "../interfaces/IDiamondLoupe.sol";
 
-contract DiamondLoupeFacet {
-    struct Facet {
-        address facetAddress;
-        bytes4[] functionSelectors;
-    }
+contract DiamondLoupeFacet is IDiamondLoupe {
 
-    function facets() external view returns (Facet[] memory facets_) {
+    function facets() external view override returns (Facet[] memory facets_) {
         LibDiamond.DiamondStorage storage ds = LibDiamond.diamondStorage();
         uint256 numSelectors = ds.selectors.length;
-        
-        address[] memory uniqueFacetAddresses = new address[](numSelectors);
+        address[] memory tempFacetAddresses = new address[](numSelectors);
         uint256 numUniqueFacets = 0;
 
         for (uint256 i = 0; i < numSelectors; i++) {
-            // --- PERBAIKAN: Menggunakan `facetAddressForSelector` yang baru ---
-            address currentFacetAddress = ds.facetAddressForSelector[ds.selectors[i]];
+            address currentFacetAddress = ds.facetAddress[ds.selectors[i]];
             bool found = false;
             for (uint256 j = 0; j < numUniqueFacets; j++) {
-                if (uniqueFacetAddresses[j] == currentFacetAddress) {
+                if (tempFacetAddresses[j] == currentFacetAddress) {
                     found = true;
                     break;
                 }
             }
             if (!found) {
-                uniqueFacetAddresses[numUniqueFacets] = currentFacetAddress;
+                tempFacetAddresses[numUniqueFacets] = currentFacetAddress;
                 numUniqueFacets++;
             }
         }
 
         facets_ = new Facet[](numUniqueFacets);
         for (uint256 i = 0; i < numUniqueFacets; i++) {
-            address currentFacetAddress = uniqueFacetAddresses[i];
-            bytes4[] memory selectors = facetFunctionSelectors(currentFacetAddress);
-            facets_[i] = Facet(currentFacetAddress, selectors);
+            address facetAddr = tempFacetAddresses[i];
+            facets_[i].facetAddress = facetAddr;
+            facets_[i].functionSelectors = facetFunctionSelectors(facetAddr);
         }
     }
 
-    function facetFunctionSelectors(address _facet) public view returns (bytes4[] memory _facetFunctionSelectors) {
+    function facetFunctionSelectors(address _facet) public view override returns (bytes4[] memory _facetFunctionSelectors) {
         LibDiamond.DiamondStorage storage ds = LibDiamond.diamondStorage();
         uint256 selectorCount = 0;
         for (uint256 i = 0; i < ds.selectors.length; i++) {
-            // --- PERBAIKAN: Menggunakan `facetAddressForSelector` yang baru ---
-            if (ds.facetAddressForSelector[ds.selectors[i]] == _facet) {
+            if (ds.facetAddress[ds.selectors[i]] == _facet) {
                 selectorCount++;
             }
         }
-
         _facetFunctionSelectors = new bytes4[](selectorCount);
         uint256 currentSelectorIndex = 0;
         for (uint256 i = 0; i < ds.selectors.length; i++) {
-            // --- PERBAIKAN: Menggunakan `facetAddressForSelector` yang baru ---
-            if (ds.facetAddressForSelector[ds.selectors[i]] == _facet) {
+            if (ds.facetAddress[ds.selectors[i]] == _facet) {
                 _facetFunctionSelectors[currentSelectorIndex] = ds.selectors[i];
                 currentSelectorIndex++;
             }
         }
     }
 
-    function facetAddress(bytes4 _functionSelector) external view returns (address facetAddress_) {
+    function facetAddress(bytes4 _functionSelector) external view override returns (address facetAddress_) {
         LibDiamond.DiamondStorage storage ds = LibDiamond.diamondStorage();
-        // --- PERBAIKAN: Menggunakan `facetAddressForSelector` yang baru ---
-        facetAddress_ = ds.facetAddressForSelector[_functionSelector];
+        facetAddress_ = ds.facetAddress[_functionSelector];
+    }
+    
+    function facetAddresses() external view override returns (address[] memory facetAddresses_) {
+        LibDiamond.DiamondStorage storage ds = LibDiamond.diamondStorage();
+        uint256 selectorCount = ds.selectors.length;
+        address[] memory tempAddresses = new address[](selectorCount);
+        uint256 uniqueCount = 0;
+        for (uint256 i = 0; i < selectorCount; i++) {
+            address currentAddr = ds.facetAddress[ds.selectors[i]];
+            bool found = false;
+            for (uint256 j = 0; j < uniqueCount; j++) {
+                if (tempAddresses[j] == currentAddr) {
+                    found = true;
+                    break;
+                }
+            }
+            if (!found) {
+                tempAddresses[uniqueCount] = currentAddr;
+                uniqueCount++;
+            }
+        }
+        facetAddresses_ = new address[](uniqueCount);
+        for(uint256 i = 0; i < uniqueCount; i++){
+            facetAddresses_[i] = tempAddresses[i];
+        }
     }
 }
