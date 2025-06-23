@@ -3,11 +3,9 @@ import { ethers } from "hardhat";
 async function main() {
     const [deployer] = await ethers.getSigners();
     
-    const diamondAddress = "0x59e9FAe60e8c7ce35335b96a85fF6dAac2A76D08"; // Alamat dari hasil deploy terakhir Anda
-    const recipientAddress = "0xC25F0BFc89859C7076C5400968A900323b48005d"; // Alamat Anda sebagai penerima
+    const diamondAddress = "0x0aF4D85CfB27428799270BECd89505bbD1A07910";
+    const recipientAddress = "0xC25F0BFc89859C7076C5400968A900323b48005d";
 
-    // --- PERBAIKAN DI SINI ---
-    // Cek apakah alamat masih berupa nilai placeholder awal, bukan nilai yang sudah diisi.
     if (diamondAddress === "0x..." || recipientAddress === "0x...") {
         console.error("Harap isi alamat Diamond dan alamat penerima di dalam skrip.");
         return;
