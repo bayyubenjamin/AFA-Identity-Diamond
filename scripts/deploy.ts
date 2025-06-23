@@ -1,4 +1,4 @@
-// scripts/deploy.ts (Corrected with passing test logic)
+// scripts/deploy.ts
 
 import { ethers } from "hardhat";
 import { getSelectors } from "./libraries/diamond";
@@ -7,22 +7,18 @@ import { DiamondInit, FacetNames } from "../diamondConfig";
 async function main() {
     const [deployer] = await ethers.getSigners();
     console.log("Deploying contracts with the account:", deployer.address);
+    
+    const VERIFIER_ADDRESS = "0x..."; // ISI ALAMAT BACKEND VERIFIER ANDA DI SINI
+    const BASE_URI = "https://api.yourproject.com/metadata/"; // ISI BASE URI API METADATA ANDA
 
-    const FacetCut = {
-        Add: 0,
-        Replace: 1,
-        Remove: 2
-    };
-
-    // 1. Deploy the main Diamond contract (it's "empty" initially)
+    // 1. Deploy Diamond
     const DiamondFactory = await ethers.getContractFactory("Diamond");
     const diamondContract = await DiamondFactory.deploy(deployer.address);
     await diamondContract.waitForDeployment();
     const diamondAddress = await diamondContract.getAddress();
-    const diamond = await ethers.getContractAt("Diamond", diamondAddress);
     console.log("💎 Diamond proxy deployed to:", diamondAddress);
 
-    // 2. Deploy all Facets
+    // 2. Deploy Facets
     console.log("\nDeploying facets...");
     const cut = [];
     const facetContracts: { [key: string]: any } = {};
@@ -35,20 +31,20 @@ async function main() {
         console.log(`- ${facetName} deployed to: ${await facet.getAddress()}`);
         cut.push({
             facetAddress: await facet.getAddress(),
-            action: FacetCut.Add,
+            action: 0, // FacetCutAction.Add
             functionSelectors: getSelectors(facet),
         });
     }
 
-    // 3. Prepare the initializer call
-    const initFacetContract = facetContracts[DiamondInit];
+    // 3. Prepare initializer call for the new initializer facet
+    const initFacetContract = facetContracts[DiamondInit]; // Now 'SubscriptionManagerFacet'
     const functionCall = initFacetContract.interface.encodeFunctionData("initialize", [
-        "AFA Identity",
-        "AFAID",
-        deployer.address,
+        VERIFIER_ADDRESS,
+        BASE_URI,
     ]);
 
-    // 4. Perform a single diamondCut to add all facets AND initialize the state
+    // 4. Perform diamondCut
+    const diamond = await ethers.getContractAt("Diamond", diamondAddress);
     console.log("\nPerforming diamond cut and initialization...");
     const tx = await diamond.connect(deployer).diamondCut(
         cut, 
@@ -56,18 +52,15 @@ async function main() {
         functionCall
     );
     
-    const receipt = await tx.wait();
-    if (!receipt?.status) {
-        throw Error(`Diamond cut/initialization failed: ${tx.hash}`);
-    }
+    await tx.wait();
     console.log("✅ Diamond cut and initialization successful.");
 
-
     // Final check
-    const afaERC721 = await ethers.getContractAt("AFA_ERC721_Facet", diamondAddress);
+    const identityCore = await ethers.getContractAt("IdentityCoreFacet", diamondAddress);
     console.log(`\n--- Deployment Successful ---`);
-    console.log(`NFT Name: ${await afaERC721.name()}`);
-    console.log(`NFT Symbol: ${await afaERC721.symbol()}`);
+    console.log(`NFT Name: ${await identityCore.name()}`);
+    console.log(`NFT Symbol: ${await identityCore.symbol()}`);
+    console.log(`Base URI: ${await identityCore.baseURI()}`);
     console.log(`-----------------------------`);
 }
 

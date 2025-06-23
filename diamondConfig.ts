@@ -1,13 +1,15 @@
 // diamondConfig.ts
 
-// Initializer function is now in AFA_Admin_Facet
-export const DiamondInit = 'AFA_Admin_Facet';
+// The initializer function will be moved to our new SubscriptionManagerFacet
+export const DiamondInit = 'SubscriptionManagerFacet';
 
 export const FacetNames = [
-    // DiamondCutFacet dihapus dari sini
+    // Standard Diamond facets
     'DiamondLoupeFacet',
     'OwnershipFacet',
-    'AFA_ERC721_Facet',
-    'AFA_Admin_Facet',
-    'AFA_Profile_Facet'
+    
+    // AFA Identity Core Facets (New & Updated)
+    'IdentityCoreFacet',          // Replaces AFA_ERC721_Facet, handles soulbound logic and baseURI
+    'AttestationFacet',           // New: Manages premium status and expiration
+    'SubscriptionManagerFacet',   // New: Manages pricing, payments, minting, and renewals
 ];
