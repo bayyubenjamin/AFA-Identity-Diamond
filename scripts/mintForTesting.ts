@@ -3,7 +3,7 @@ import { ethers } from "hardhat";
 async function main() {
     const [deployer] = await ethers.getSigners();
     
-    const diamondAddress = "0x0aF4D85CfB27428799270BECd89505bbD1A07910";
+    const diamondAddress = "0xd9aB239C897A1595df704124c0bD77560CA3655F";
     const recipientAddress = "0xC25F0BFc89859C7076C5400968A900323b48005d";
 
     if (diamondAddress === "0x..." || recipientAddress === "0x...") {
