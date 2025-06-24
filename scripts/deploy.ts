@@ -1,26 +1,26 @@
+// scripts/deploy.ts (Versi "Anti Gagal")
+
 import { ethers } from "hardhat";
-import { getSelectors } from "./libraries/diamond";
 import { DiamondInit, FacetNames } from "../diamondConfig";
 import { Contract } from "ethers";
 
+// Helper untuk mengubah nama fungsi menjadi selector 4-byte
+function getSelector(signature: string): string {
+    return ethers.id(signature).substring(0, 10);
+}
+
 async function main() {
     const [deployer] = await ethers.getSigners();
-
-    // Ambil fee data untuk mendapatkan estimasi gas price
-    const feeData = await ethers.provider.getFeeData();
-    const adjustedGasPrice = feeData.gasPrice
-        ? feeData.gasPrice + ethers.parseUnits("1", "gwei") // naikkan 1 gwei dari estimasi
-        : ethers.parseUnits("5", "gwei"); // fallback
+    const verifierWalletAddress = "0xE0F4e897D99D8F7642DaA807787501154D316870"; // Alamat verifier (wallet kedua)
 
     console.log("Deploying contracts with the account:", deployer.address);
-    console.log("Using gas price:", ethers.formatUnits(adjustedGasPrice, "gwei"), "gwei");
 
     // 1. Deploy semua facets
     console.log("Deploying facets...");
     const facetContracts: { [key: string]: Contract } = {};
     for (const facetName of FacetNames) {
         const FacetFactory = await ethers.getContractFactory(facetName);
-        const facet = await FacetFactory.deploy({ gasPrice: adjustedGasPrice });
+        const facet = await FacetFactory.deploy();
         await facet.waitForDeployment();
         facetContracts[facetName] = facet;
         console.log(`- ${facetName} deployed to: ${await facet.getAddress()}`);
@@ -30,99 +30,89 @@ async function main() {
     const DiamondFactory = await ethers.getContractFactory("Diamond");
     const diamondContract = await DiamondFactory.deploy(
         deployer.address,
-        await facetContracts["DiamondCutFacet"].getAddress(),
-        { gasPrice: adjustedGasPrice }
+        await facetContracts["DiamondCutFacet"].getAddress()
     );
     await diamondContract.waitForDeployment();
     const diamondAddress = await diamondContract.getAddress();
     console.log("💎 Diamond proxy deployed to:", diamondAddress);
 
-    // 3. Susun cut
-    const cut = [];
-    const allSelectors = new Set<string>();
-
-    for (const facetName of FacetNames) {
-        let selectors = getSelectors(facetContracts[facetName]);
-
-        if (facetName === "DiamondCutFacet") {
-            selectors = selectors.filter((s: string) => s !== "0x1f931c1c");
+    // 3. Susun cut SECARA MANUAL & EKSPLISIT
+    console.log("\nConstructing Diamond Cut...");
+    
+    const cut = [
+        {
+            facetAddress: await facetContracts["DiamondLoupeFacet"].getAddress(),
+            action: 0, // Add
+            functionSelectors: [
+                getSelector("facets()"),
+                getSelector("facetFunctionSelectors(address)"),
+                getSelector("facetAddress(bytes4)"),
+                getSelector("supportsInterface(bytes4)") // Biasanya di Loupe juga
+            ]
+        },
+        {
+            facetAddress: await facetContracts["OwnershipFacet"].getAddress(),
+            action: 0, // Add
+            functionSelectors: [
+                getSelector("owner()"),
+                getSelector("transferOwnership(address)")
+            ]
+        },
+        {
+            facetAddress: await facetContracts["IdentityCoreFacet"].getAddress(),
+            action: 0, // Add
+            functionSelectors: [
+                getSelector("mintIdentity(bytes)"),
+                getSelector("getIdentity(address)"),
+                getSelector("verifier()"),
+                getSelector("baseURI()"),
+                getSelector("name()"),
+                getSelector("symbol()"),
+                getSelector("balanceOf(address)"),
+                getSelector("ownerOf(uint256)"),
+                getSelector("tokenURI(uint256)")
+                // Tambahkan selector ERC721 lainnya jika perlu
+            ]
+        },
+        {
+            facetAddress: await facetContracts["SubscriptionManagerFacet"].getAddress(),
+            action: 0, // Add
+            functionSelectors: [
+                getSelector("setPriceInUSD(uint256)"),
+                getSelector("renewSubscription(uint256)"),
+                getSelector("isPremium(uint256)"),
+                getSelector("getPremiumExpiration(uint256)")
+            ]
         }
+        // Tambahkan facet lain jika perlu (AttestationFacet, etc.)
+    ];
 
-        selectors = selectors.filter((selector: string) => {
-            if (allSelectors.has(selector)) {
-                console.warn(`⚠️  Selector ${selector} dari ${facetName} sudah ada, dilewati`);
-                return false;
-            }
-            allSelectors.add(selector);
-            return true;
-        });
-
-        console.log(`✅ Facet: ${facetName} | ${selectors.length} selectors`);
-
-        cut.push({
-            facetAddress: await facetContracts[facetName].getAddress(),
-            action: 1, // ADD
-            functionSelectors: selectors,
-        });
-    }
-
-    console.log("\n📋 Diamond Cut Summary:");
-    for (const entry of cut) {
-        console.log(`- ${entry.facetAddress} | ${entry.functionSelectors.length} selectors`);
-    }
+    console.log("\n📋 Diamond Cut Summary prepared.");
 
     // 4. diamondCut + initialize
     const diamondCutInstance = await ethers.getContractAt("IDiamondCut", diamondAddress);
-    const initFacet = facetContracts[DiamondInit];
+    const initFacet = facetContracts["IdentityCoreFacet"]; // Inisialisasi ada di sini
 
-    let functionCall = "0x";
-    try {
-        functionCall = initFacet.interface.encodeFunctionData("initialize", [
-            deployer.address,
-            "https://api.afa-weeb3tool.com/metadata/",
-        ]);
-    } catch (err) {
-        console.warn("⚠️  initialize() tidak ditemukan di facet inisialisasi, lanjut tanpa inisialisasi");
-    }
+    const functionCall = initFacet.interface.encodeFunctionData("initialize", [
+        verifierWalletAddress,
+        "https://cxoykbwigsfheaegpwke.supabase.co/functions/v1/metadata/",
+    ]);
 
-    console.log("\n🚀 Performing diamondCut (gas optimized)...");
-    try {
-        const tx = await diamondCutInstance.connect(deployer).diamondCut(
-            cut,
-            await initFacet.getAddress(),
-            functionCall,
-            {
-                gasLimit: 3_500_000,
-                gasPrice: adjustedGasPrice,
-            }
-        );
-        const receipt = await tx.wait();
-        if (receipt?.status === 0) {
-            throw new Error("❌ DiamondCut transaction reverted");
-        }
-        console.log("✅ Diamond cut and initialization successful.");
-    } catch (err) {
-        console.error("❌ diamondCut failed:");
-        console.error(err);
-        return;
-    }
+    console.log("\n🚀 Performing diamondCut...");
+    const tx = await diamondCutInstance.diamondCut(cut, await initFacet.getAddress(), functionCall);
+    await tx.wait();
+    console.log("✅ Diamond cut and initialization successful.");
 
-    // Tes IdentityCoreFacet
-    try {
-        const identityCore = await ethers.getContractAt("IdentityCoreFacet", diamondAddress);
-        console.log(`\n--- Deployment Successful ---`);
-        console.log(`Diamond Address: ${diamondAddress}`);
-        console.log(`NFT Name: ${await identityCore.name()}`);
-        console.log(`NFT Symbol: ${await identityCore.symbol()}`);
-        console.log(`-----------------------------`);
-    } catch (err) {
-        console.warn("⚠️  Tidak bisa membaca IdentityCoreFacet (mungkin belum di-add dengan benar)");
-    }
+    // Tes Akhir
+    const identityCore = await ethers.getContractAt("IdentityCoreFacet", diamondAddress);
+    console.log(`\n--- FINAL VERIFICATION ---`);
+    console.log(`Diamond Address: ${diamondAddress}`);
+    console.log(`Verifier Address: ${await identityCore.verifier()}`);
+    console.log(`NFT Name: ${await identityCore.name()}`);
+    console.log(`------------------------`);
 }
 
 main().catch((error) => {
-    console.error("❌ Uncaught error in script:");
-    console.error(error);
+    console.error("❌ Uncaught error in script:", error);
     process.exitCode = 1;
 });
-
