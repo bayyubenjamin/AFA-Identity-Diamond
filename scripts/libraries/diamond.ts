@@ -5,7 +5,8 @@ export const FacetCutAction = { Add: 0, Replace: 1, Remove: 2 };
 // get function selectors from ABI
 export function getSelectors(contract: Contract): string[] {
     const selectors: string[] = [];
-    contract.interface.forEachFunction((func: FunctionFragment) => {
+    // ethers@6.x: interface.forEachFunction
+    (contract.interface as any).forEachFunction((func: FunctionFragment) => {
         if (func.name !== '') {
             selectors.push(func.selector);
         }

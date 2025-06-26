@@ -32,6 +32,11 @@ contract SubscriptionManagerFacet {
         s.priceInUSD = _priceInCents;
     }
 
+    // --- Public Getter Fungsi Harga untuk Frontend ---
+    function priceInCents() external view returns (uint256) {
+        return s.priceInUSD;
+    }
+
     // --- Public Mint & Renew Functions ---
     // NOTE: These functions are placeholders and need full implementation.
     function mintIdentity(bytes calldata _signature) external payable {
