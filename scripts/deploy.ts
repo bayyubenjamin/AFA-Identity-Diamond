@@ -1,5 +1,3 @@
-// scripts/deploy.ts (Versi "Anti Gagal")
-
 import { ethers } from "hardhat";
 import { DiamondInit, FacetNames } from "../diamondConfig";
 import { Contract } from "ethers";
@@ -70,8 +68,8 @@ async function main() {
                 getSelector("symbol()"),
                 getSelector("balanceOf(address)"),
                 getSelector("ownerOf(uint256)"),
-                getSelector("tokenURI(uint256)")
-                // Tambahkan selector ERC721 lainnya jika perlu
+                getSelector("tokenURI(uint256)"),
+                getSelector("initialize(address,string)") // HARUS ADA jika pakai inisialisasi
             ]
         },
         {
@@ -83,8 +81,17 @@ async function main() {
                 getSelector("isPremium(uint256)"),
                 getSelector("getPremiumExpiration(uint256)")
             ]
-        }
+        },
         // Tambahkan facet lain jika perlu (AttestationFacet, etc.)
+
+        // Tambahkan TestingAdminFacet (agar adminMint aktif)
+        {
+            facetAddress: await facetContracts["TestingAdminFacet"].getAddress(),
+            action: 0, // Add
+            functionSelectors: [
+                getSelector("adminMint(address)")
+            ]
+        }
     ];
 
     console.log("\n📋 Diamond Cut Summary prepared.");
