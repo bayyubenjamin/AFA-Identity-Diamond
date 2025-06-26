@@ -45,7 +45,7 @@ async function main() {
                 getSelector("facets()"),
                 getSelector("facetFunctionSelectors(address)"),
                 getSelector("facetAddress(bytes4)"),
-                getSelector("supportsInterface(bytes4)") // Biasanya di Loupe juga
+                getSelector("supportsInterface(bytes4)")
             ]
         },
         {
@@ -69,7 +69,7 @@ async function main() {
                 getSelector("balanceOf(address)"),
                 getSelector("ownerOf(uint256)"),
                 getSelector("tokenURI(uint256)"),
-                getSelector("initialize(address,string)") // HARUS ADA jika pakai inisialisasi
+                getSelector("initialize(address,string)")
             ]
         },
         {
@@ -83,7 +83,14 @@ async function main() {
             ]
         },
         // Tambahkan facet lain jika perlu (AttestationFacet, etc.)
-
+        {
+            facetAddress: await facetContracts["AttestationFacet"].getAddress(),
+            action: 0, // Add
+            functionSelectors: [
+                getSelector("attest(bytes32,bytes32)"),
+                getSelector("getAttestation(bytes32)")
+            ]
+        },
         // Tambahkan TestingAdminFacet (agar adminMint aktif)
         {
             facetAddress: await facetContracts["TestingAdminFacet"].getAddress(),

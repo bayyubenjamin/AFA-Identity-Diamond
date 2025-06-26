@@ -90,24 +90,24 @@ contract IdentityCoreFacet is IERC721Metadata {
 
     // --- Minting and Query Functions ---
 
- function mintIdentity(bytes calldata _signature) external payable {
-    LibIdentityStorage.Layout storage s = LibIdentityStorage.layout();
+    function mintIdentity(bytes calldata _signature) external payable {
+        LibIdentityStorage.Layout storage s = LibIdentityStorage.layout();
 
-    // Buat hash yang SAMA PERSIS dengan di backend
-    bytes32 messageHash = keccak256(abi.encodePacked("AFA_MINT:", msg.sender, s.nonce[msg.sender]));
-    
-    // Langsung pulihkan dari hash mentah, bukan dari "eth signed message hash"
-    address signer = ECDSA.recover(messageHash, _signature);
-    
-    require(signer == s.verifierAddress, "AFA: Invalid signature");
-    
-    address recipient = msg.sender;
-    require(s._addressToTokenId[recipient] == 0, "AFA: Address already has an identity");
+        // Buat hash yang SAMA PERSIS dengan di backend
+        bytes32 messageHash = keccak256(abi.encodePacked("AFA_MINT:", msg.sender, s.nonce[msg.sender]));
 
-    s.nonce[msg.sender]++;
-    
-    s._mint(recipient);
-}
+        // Langsung pulihkan dari hash mentah, bukan dari "eth signed message hash"
+        address signer = ECDSA.recover(messageHash, _signature);
+
+        require(signer == s.verifierAddress, "AFA: Invalid signature");
+
+        address recipient = msg.sender;
+        require(s._addressToTokenId[recipient] == 0, "AFA: Address already has an identity");
+
+        s.nonce[msg.sender]++;
+
+        s._mint(recipient);
+    }
     
     function getIdentity(address _user) external view returns (uint256 tokenId, uint256 premiumExpiration, bool isPremium) {
         LibIdentityStorage.Layout storage s = LibIdentityStorage.layout();
@@ -116,5 +116,10 @@ contract IdentityCoreFacet is IERC721Metadata {
             premiumExpiration = s.premiumExpirations[tokenId];
             isPremium = premiumExpiration >= block.timestamp;
         }
+    }
+
+    // --- GETTER BARU: Agar bisa diakses dari Diamond proxy ---
+    function verifier() external view returns (address) {
+        return LibIdentityStorage.layout().verifierAddress;
     }
 }

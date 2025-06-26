@@ -1,13 +1,13 @@
 #!/bin/bash
 
-echo "🔍 Verifying facets on baseSepolia..."
+echo "Verifying all facets on optimismSepolia..."
 
-npx hardhat verify --network baseSepolia 0x42C58e3AdA7BADF565c248bd124C7198Bf3a0d29 # DiamondCutFacet
-npx hardhat verify --network baseSepolia 0xbd0E0E87faCF61d4E6E09aD014C757F84191c951 # DiamondLoupeFacet
-npx hardhat verify --network baseSepolia 0x978E6DD78a41dF828FeE91EfAEaE6827f058d425 # OwnershipFacet
-npx hardhat verify --network baseSepolia 0x1b3CeA9A1A33698c5eFdBF1cEA667Bc5f588030c # IdentityCoreFacet
-npx hardhat verify --network baseSepolia 0x2A4d42DB2cb752d0dE7973cB9582baAae7229cd4 # AttestationFacet
-npx hardhat verify --network baseSepolia 0x5f2337639b0d8E6563d2B73f9b126774048a815b # SubscriptionManagerFacet
-npx hardhat verify --network baseSepolia 0x6a86e4dd3d1159795cBebE2aeD97A66be489aF70 # TestingAdminFacet
+npx hardhat verify --network optimismSepolia 0x3743b653dE0ff9c93c6368FCc57886d65C1aE459 # DiamondCutFacet
+npx hardhat verify --network optimismSepolia 0x834EB2C054a1EA34B3f6A5D77e6647A5546aF41e # DiamondLoupeFacet
+npx hardhat verify --network optimismSepolia 0x8DdEEa19fe357253e99813c91c0E70b9Bd4D3622 # OwnershipFacet
+npx hardhat verify --network optimismSepolia 0x1270aE6FCf2a20f18C72D903e671390689Aced1F # IdentityCoreFacet
+npx hardhat verify --network optimismSepolia 0xC9E33628B4FD2a12A2b2f3527c4c31C0932427cc # AttestationFacet
+npx hardhat verify --network optimismSepolia 0xB872A87F3F8dc19D07bdF06A978a62bC750CBC94 # SubscriptionManagerFacet
+npx hardhat verify --network optimismSepolia 0x1ac257D72A851b058442219d79aF86Bf4E632194 # TestingAdminFacet
 
-echo "✅ All facets verification attempt done."
+echo "Selesai."
