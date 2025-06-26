@@ -2,61 +2,52 @@
 pragma solidity ^0.8.24;
 
 library LibIdentityStorage {
-    bytes32 public constant STORAGE_POSITION = keccak256("diamond.standard.identity.storage.v1");
-
-    // --- Data Storage Struct ---
     struct Layout {
-        // --- ERC721 Core Data ---
-        mapping(uint256 => address) _tokenIdToAddress;
+        // Soulbound identity
         mapping(address => uint256) _addressToTokenId;
-        uint256 _totalSupply;
-        uint256 _nextTokenId;
-
-        // --- ERC721 Metadata ---
-        string baseURI;
-
-        // --- Identity Logic ---
+        mapping(uint256 => address) _tokenIdToAddress;
         address verifierAddress;
+        string baseURI;
         mapping(address => uint256) nonce;
-
-        // --- Subscription Logic ---
-        uint256 priceInUSD;
-        address priceFeed;
         mapping(uint256 => uint256) premiumExpirations;
+
+        // ERC721Enumerable storage
+        mapping(address => mapping(uint256 => uint256)) _ownedTokens;
+        mapping(uint256 => uint256) _ownedTokensIndex;
+        uint256[] _allTokens;
+        mapping(uint256 => uint256) _allTokensIndex;
+        mapping(uint256 => address) _owners;
+        mapping(address => uint256) _balances;
+
+        // Tambahan: next token ID
+        uint256 _tokenIdTracker;
     }
 
-    // --- Helper Functions ---
+    bytes32 internal constant STORAGE_SLOT = keccak256("identity.storage");
 
-    function layout() internal pure returns (Layout storage s) {
-        bytes32 position = STORAGE_POSITION;
+    function layout() internal pure returns (Layout storage l) {
+        bytes32 slot = STORAGE_SLOT;
         assembly {
-            s.slot := position
+            l.slot := slot
         }
     }
 
-    /// @notice Internal function to mint a new token.
-    /// @return tokenId of the minted token
-    function _mint(Layout storage s, address _to) internal returns (uint256) {
-        require(_to != address(0), "ERC721: mint to the zero address");
-        require(s._addressToTokenId[_to] == 0, "ERC721: user already owns a token");
+    // Mint logic yang update semua field
+    function _mint(Layout storage s, address to) internal returns (uint256 tokenId) {
+        require(to != address(0), "mint to zero address");
+        require(s._addressToTokenId[to] == 0, "AFA: Address already has an identity");
 
-        s._totalSupply++;
-        uint256 id = ++s._nextTokenId;
-        
-        s._tokenIdToAddress[id] = _to;
-        s._addressToTokenId[_to] = id;
-        return id;
-        // Event Transfer akan diemit di facet, BUKAN di sini
-    }
+        tokenId = ++s._tokenIdTracker;
+        s._tokenIdToAddress[tokenId] = to;
+        s._addressToTokenId[to] = tokenId;
+        s._owners[tokenId] = to;
+        s._balances[to] += 1;
 
-    /// @notice Internal function to burn a token.
-    function _burn(Layout storage s, uint256 _tokenId) internal returns (address owner) {
-        owner = s._tokenIdToAddress[_tokenId];
-        require(owner != address(0), "ERC721: burn nonexistent token");
-
-        s._totalSupply--;
-        delete s._tokenIdToAddress[_tokenId];
-        delete s._addressToTokenId[owner];
-        // Event Transfer akan diemit di facet, BUKAN di sini
+        // --- ERC721Enumerable logic ---
+        uint256 len = s._balances[to] - 1;
+        s._ownedTokens[to][len] = tokenId;
+        s._ownedTokensIndex[tokenId] = len;
+        s._allTokensIndex[tokenId] = s._allTokens.length;
+        s._allTokens.push(tokenId);
     }
 }

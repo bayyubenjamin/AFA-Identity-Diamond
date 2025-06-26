@@ -12,8 +12,6 @@ import {MessageHashUtils} from "@openzeppelin/contracts/utils/cryptography/Messa
 contract IdentityCoreFacet is IERC721Metadata {
     using LibIdentityStorage for LibIdentityStorage.Layout;
 
-    // --- HAPUS deklarasi event Transfer di sini! ---
-
     // --- ERC721 View Functions ---
 
     function name() external pure override returns (string memory) {
@@ -32,7 +30,7 @@ contract IdentityCoreFacet is IERC721Metadata {
 
     function balanceOf(address owner) public view override returns (uint256) {
         require(owner != address(0), "ERC721: balance query for the zero address");
-        return LibIdentityStorage.layout()._addressToTokenId[owner] != 0 ? 1 : 0;
+        return LibIdentityStorage.layout()._balances[owner];
     }
 
     function tokenURI(uint256 tokenId) external view override returns (string memory) {
