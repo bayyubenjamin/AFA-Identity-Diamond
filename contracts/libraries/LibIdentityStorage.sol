@@ -1,9 +1,6 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.24;
 
-// <-- TAMBAHKAN BARIS INI
-import "@openzeppelin/contracts/token/ERC721/IERC721.sol";
-
 library LibIdentityStorage {
     bytes32 public constant STORAGE_POSITION = keccak256("diamond.standard.identity.storage.v1");
 
@@ -38,7 +35,8 @@ library LibIdentityStorage {
     }
 
     /// @notice Internal function to mint a new token.
-    function _mint(Layout storage s, address _to) internal {
+    /// @return tokenId of the minted token
+    function _mint(Layout storage s, address _to) internal returns (uint256) {
         require(_to != address(0), "ERC721: mint to the zero address");
         require(s._addressToTokenId[_to] == 0, "ERC721: user already owns a token");
 
@@ -47,21 +45,18 @@ library LibIdentityStorage {
         
         s._tokenIdToAddress[id] = _to;
         s._addressToTokenId[_to] = id;
-
-        // Sekarang compiler tahu apa itu IERC721.Transfer
-        emit IERC721.Transfer(address(0), _to, id);
+        return id;
+        // Event Transfer akan diemit di facet, BUKAN di sini
     }
 
     /// @notice Internal function to burn a token.
-    function _burn(Layout storage s, uint256 _tokenId) internal {
-        address owner = s._tokenIdToAddress[_tokenId];
+    function _burn(Layout storage s, uint256 _tokenId) internal returns (address owner) {
+        owner = s._tokenIdToAddress[_tokenId];
         require(owner != address(0), "ERC721: burn nonexistent token");
 
         s._totalSupply--;
         delete s._tokenIdToAddress[_tokenId];
         delete s._addressToTokenId[owner];
-
-        // Sekarang compiler tahu apa itu IERC721.Transfer
-        emit IERC721.Transfer(owner, address(0), _tokenId);
+        // Event Transfer akan diemit di facet, BUKAN di sini
     }
 }

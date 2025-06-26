@@ -2,12 +2,12 @@
 
 echo "Verifying all facets on optimismSepolia..."
 
-npx hardhat verify --network optimismSepolia 0x3743b653dE0ff9c93c6368FCc57886d65C1aE459 # DiamondCutFacet
-npx hardhat verify --network optimismSepolia 0x834EB2C054a1EA34B3f6A5D77e6647A5546aF41e # DiamondLoupeFacet
-npx hardhat verify --network optimismSepolia 0x8DdEEa19fe357253e99813c91c0E70b9Bd4D3622 # OwnershipFacet
-npx hardhat verify --network optimismSepolia 0x1270aE6FCf2a20f18C72D903e671390689Aced1F # IdentityCoreFacet
-npx hardhat verify --network optimismSepolia 0xC9E33628B4FD2a12A2b2f3527c4c31C0932427cc # AttestationFacet
-npx hardhat verify --network optimismSepolia 0xB872A87F3F8dc19D07bdF06A978a62bC750CBC94 # SubscriptionManagerFacet
-npx hardhat verify --network optimismSepolia 0x1ac257D72A851b058442219d79aF86Bf4E632194 # TestingAdminFacet
+npx hardhat verify --network optimismSepolia 0xEa8503548Cfbc31a46B06C5d27f6fD6566656E35 # DiamondCutFacet
+npx hardhat verify --network optimismSepolia 0x4BBf71c2280B16Fd3A14bd19c2b1eB6DC16eeE5a # DiamondLoupeFacet
+npx hardhat verify --network optimismSepolia 0x47273Cce433982e35A99387C5db281AC4a2c4767 # OwnershipFacet
+npx hardhat verify --network optimismSepolia 0x3abbCDB5d61d14948DEe784b7B17Dc51E9eBe189 # IdentityCoreFacet
+npx hardhat verify --network optimismSepolia 0xa67404E44bdb62835486066cBdF8f2a9e07CD9Ac # AttestationFacet
+npx hardhat verify --network optimismSepolia 0xA6dfeAd9F0eb041865187356956b5493b9B1c1d2 # SubscriptionManagerFacet
+npx hardhat verify --network optimismSepolia 0xF2bF0Fa36BC64C090daE353C67A0aa3533b8e4ac # TestingAdminFacet
 
 echo "Selesai."

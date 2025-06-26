@@ -7,10 +7,12 @@ import "@openzeppelin/contracts/token/ERC721/IERC721.sol";
 import "@openzeppelin/contracts/token/ERC721/extensions/IERC721Metadata.sol";
 import "@openzeppelin/contracts/utils/Strings.sol";
 import "@openzeppelin/contracts/utils/cryptography/ECDSA.sol";
-import {MessageHashUtils} from "@openzeppelin/contracts/utils/cryptography/MessageHashUtils.sol"; // Impor library yang benar
+import {MessageHashUtils} from "@openzeppelin/contracts/utils/cryptography/MessageHashUtils.sol";
 
 contract IdentityCoreFacet is IERC721Metadata {
     using LibIdentityStorage for LibIdentityStorage.Layout;
+
+    // --- HAPUS deklarasi event Transfer di sini! ---
 
     // --- ERC721 View Functions ---
 
@@ -81,10 +83,10 @@ contract IdentityCoreFacet is IERC721Metadata {
     }
 
     // --- Initialization Function ---
-    function initialize(address verifier, string memory _baseURI) external {
+    function initialize(address verifier_, string memory _baseURI) external {
         LibIdentityStorage.Layout storage s = LibIdentityStorage.layout();
         require(s.verifierAddress == address(0), "Already initialized");
-        s.verifierAddress = verifier;
+        s.verifierAddress = verifier_;
         s.baseURI = _baseURI;
     }
 
@@ -106,7 +108,9 @@ contract IdentityCoreFacet is IERC721Metadata {
 
         s.nonce[msg.sender]++;
 
-        s._mint(recipient);
+        // Mint & emit event Transfer langsung dari facet
+        uint256 tokenId = s._mint(recipient);
+        emit Transfer(address(0), recipient, tokenId);
     }
     
     function getIdentity(address _user) external view returns (uint256 tokenId, uint256 premiumExpiration, bool isPremium) {
