@@ -1,13 +1,16 @@
+// Menggunakan cara impor yang kompatibel
 const { ethers } = require("hardhat");
 
 async function main() {
   // Ganti dengan alamat diamond kamu
-  const diamondAddress = "0x901b6FDb8FAadfe874B0d9A4e36690Fd8ee1C4cD";
-  // Ganti dengan alamat facet yang benar
-  const facetAddress = "0xA6dfeAd9F0eb041865187356956b5493b9B1c1d2";
+  const diamondAddress = "0x9B0bA25ed4306A6F156F78d820EC563AEa9808D4";
+  // Ganti dengan alamat facet yang memiliki fungsi priceInCents()
+  // Kemungkinan besar ini adalah SubscriptionManagerFacet
+  const facetAddress = "0x600eAF33e044040CEA60f1dE8e15D4cBB5872006";
 
-  // Selector dari priceInCents()
-  const selector = ethers.utils.id("priceInCents()").substring(0, 10); // hasil: 0xd6b98d54
+  // PERBAIKAN: ethers.utils.id menjadi ethers.id
+  // Asumsi fungsi yang ingin ditambahkan adalah 'priceInCents()'
+  const selector = ethers.id("priceInCents()").substring(0, 10);
 
   // Ambil contract diamondCut interface
   const diamondCut = await ethers.getContractAt("IDiamondCut", diamondAddress);
@@ -22,17 +25,21 @@ async function main() {
   }];
 
   // Lakukan diamondCut
+  // PERBAIKAN: ethers.constants.AddressZero menjadi ethers.ZeroAddress
   const tx = await diamondCut.diamondCut(
     cut,
-    ethers.constants.AddressZero,
+    ethers.ZeroAddress, // Menggunakan properti ethers v6
     "0x"
   );
   console.log("DiamondCut tx sent:", tx.hash);
   await tx.wait();
-  console.log("DiamondCut complete!");
+  console.log("✅ DiamondCut complete! Fungsi 'priceInCents' seharusnya sudah ditambahkan.");
 }
 
-main().catch((error) => {
-  console.error(error);
-  process.exitCode = 1;
-});
+// Pola eksekusi standar
+main()
+  .then(() => process.exit(0))
+  .catch((error) => {
+    console.error("❌ Error:", error);
+    process.exit(1);
+  });
