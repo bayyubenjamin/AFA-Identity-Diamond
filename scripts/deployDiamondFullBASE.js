@@ -1,10 +1,6 @@
-
 const { ethers } = require("hardhat");
 const { FacetNames } = require("../diamondConfig.js");
 
-// This is a helper function from your old script.
-// In ethers v6, it's better to use Contract.interface.getFunction('myFunction').selector,
-// but we will keep this for now to match your existing logic.
 function getSelector(signature) {
     return ethers.id(signature).substring(0, 10);
 }
@@ -20,16 +16,11 @@ async function main() {
     for (const facetName of FacetNames) {
         const FacetFactory = await ethers.getContractFactory(facetName);
         const facet = await FacetFactory.deploy();
-        
-        // --- FIX: Use .waitForDeployment() for ethers v6 ---
         await facet.waitForDeployment();
-        
         facetContracts[facetName] = facet;
-        // --- FIX: Use .getAddress() for ethers v6 ---
         console.log(`✅ ${facetName} deployed to: ${await facet.getAddress()}`);
     }
 
-    // Deploy Diamond
     console.log("\n💎 Deploying Diamond...");
     const DiamondFactory = await ethers.getContractFactory("Diamond");
     const diamondContract = await DiamondFactory.deploy(
@@ -40,9 +31,9 @@ async function main() {
     const diamondAddress = await diamondContract.getAddress();
     console.log(`✅ Diamond proxy deployed to: ${diamondAddress}`);
 
-    // Construct Diamond Cut
-    console.log("\n🧩 Constructing Diamond Cut...");
-    const cut = [];
+    console.log("\n🧩 Constructing Diamond Cut in batches...");
+    const diamondCutInstance = await ethers.getContractAt("IDiamondCut", diamondAddress);
+
     const selectorsMap = {
         DiamondLoupeFacet: ["facets()", "facetFunctionSelectors(address)", "facetAddress(bytes4)", "supportsInterface(bytes4)"],
         OwnershipFacet: ["owner()", "transferOwnership(address)", "withdraw()"],
@@ -52,36 +43,42 @@ async function main() {
         TestingAdminFacet: ["adminMint(address)"],
         IdentityEnumerableFacet: ["totalSupply()", "tokenByIndex(uint256)", "tokenOfOwnerByIndex(address,uint256)"]
     };
+    
+    const facetsToAddInBatches = FacetNames.filter(
+        name => name !== "DiamondCutFacet" && name !== "DiamondLoupeFacet"
+    );
 
-    for (const facetName of FacetNames) {
-        if (facetName === "DiamondCutFacet") continue;
-        
+    for (const facetName of facetsToAddInBatches) {
+        console.log(`--- ⏳ Preparing to add ${facetName}...`);
         const selectors = (selectorsMap[facetName] || []).map(getSelector);
         if (selectors.length > 0) {
-            cut.push({
+            const cut = [{
                 facetAddress: await facetContracts[facetName].getAddress(),
                 action: 0, // Add
                 functionSelectors: selectors
-            });
+            }];
+
+            // --- PERBAIKAN DI SINI: Menambahkan gasLimit secara manual ---
+            const tx = await diamondCutInstance.diamondCut(cut, ethers.ZeroAddress, "0x", { gasLimit: 800000 });
+            console.log(`   > DiamondCut transaction sent for ${facetName}: ${tx.hash}`);
+            await tx.wait();
+            console.log(`   > ✅ SUCCESS: ${facetName} was added successfully!`);
         }
     }
-    console.log("✅ Diamond Cut Summary prepared.");
-
-    // Perform diamondCut and initialize
-    const diamondCutInstance = await ethers.getContractAt("IDiamondCut", diamondAddress);
+    console.log("✅ All facets added successfully in batches.");
+    
+    console.log("\n🚀 Performing initialization...");
     const initFacet = facetContracts["IdentityCoreFacet"];
     const functionCall = initFacet.interface.encodeFunctionData("initialize", [
         verifierWalletAddress,
         "https://cxoykbwigsfheaegpwke.supabase.co/functions/v1/metadata/",
     ]);
+    // --- PERBAIKAN DI SINI: Menambahkan gasLimit secara manual ---
+    const initTx = await diamondCutInstance.diamondCut([], await initFacet.getAddress(), functionCall, { gasLimit: 800000 });
+    await initTx.wait();
+    console.log("✅ Diamond initialization successful.");
 
-    console.log("\n🚀 Performing diamondCut and initialization...");
-    const tx = await diamondCutInstance.diamondCut(cut, await initFacet.getAddress(), functionCall);
-    await tx.wait();
-    console.log("✅ DiamondCut and initialization successful.");
-
-    // Set initial price (optional but recommended)
-    const initialPriceInWei = ethers.parseEther("0.001"); // Set initial price to 0.001 ETH
+    const initialPriceInWei = ethers.parseEther("0.001");
     const subscriptionManager = await ethers.getContractAt("SubscriptionManagerFacet", diamondAddress);
     console.log(`\n🛠  Setting initial price to ${ethers.formatEther(initialPriceInWei)} ETH...`);
     const setPriceTx = await subscriptionManager.setPriceInWei(initialPriceInWei);
@@ -91,10 +88,7 @@ async function main() {
     console.log("\n🎉 Deployment complete! Diamond is ready at:", diamondAddress);
 }
 
-main()
-    .then(() => process.exit(0))
-    .catch((error) => {
-        console.error("❌ Uncaught error in script:", error);
-        process.exit(1);
-    });
-
+main().catch((error) => {
+    console.error("❌ Uncaught error in script:", error);
+    process.exit(1);
+});
