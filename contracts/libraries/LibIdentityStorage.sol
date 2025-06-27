@@ -3,15 +3,18 @@ pragma solidity ^0.8.24;
 
 library LibIdentityStorage {
     struct Layout {
-        // Soulbound identity
+        // Identity
         mapping(address => uint256) _addressToTokenId;
         mapping(uint256 => address) _tokenIdToAddress;
         address verifierAddress;
         string baseURI;
         mapping(address => uint256) nonce;
-        mapping(uint256 => uint256) premiumExpirations;
 
-        // ERC721Enumerable storage
+        // Premium
+        mapping(uint256 => uint256) premiumExpirations;
+        uint256 priceInUSD;
+
+        // ERC721Enumerable
         mapping(address => mapping(uint256 => uint256)) _ownedTokens;
         mapping(uint256 => uint256) _ownedTokensIndex;
         uint256[] _allTokens;
@@ -19,7 +22,7 @@ library LibIdentityStorage {
         mapping(uint256 => address) _owners;
         mapping(address => uint256) _balances;
 
-        // Tambahan: next token ID
+        // Tracker
         uint256 _tokenIdTracker;
     }
 
@@ -32,7 +35,7 @@ library LibIdentityStorage {
         }
     }
 
-    // Mint logic yang update semua field
+    // Optional mint helper
     function _mint(Layout storage s, address to) internal returns (uint256 tokenId) {
         require(to != address(0), "mint to zero address");
         require(s._addressToTokenId[to] == 0, "AFA: Address already has an identity");
@@ -43,7 +46,7 @@ library LibIdentityStorage {
         s._owners[tokenId] = to;
         s._balances[to] += 1;
 
-        // --- ERC721Enumerable logic ---
+        // ERC721Enumerable logic
         uint256 len = s._balances[to] - 1;
         s._ownedTokens[to][len] = tokenId;
         s._ownedTokensIndex[tokenId] = len;
@@ -51,3 +54,4 @@ library LibIdentityStorage {
         s._allTokens.push(tokenId);
     }
 }
+

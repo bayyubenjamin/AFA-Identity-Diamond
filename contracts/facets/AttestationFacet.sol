@@ -1,24 +1,17 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.24;
 
-import "../libraries/DiamondStorage.sol";
+import "../libraries/LibIdentityStorage.sol";
 
 contract AttestationFacet {
-    DiamondStorage internal s;
-
-    // --- Public View Functions ---
-
     /**
      * @notice Checks if an identity's premium subscription is currently active.
      * @param tokenId The ID of the token to check.
      * @return True if the subscription is active, false otherwise.
      */
     function isPremium(uint256 tokenId) public view returns (bool) {
-        Attestation storage att = s.premiumStatus[tokenId];
-        if (att.issuer == address(0)) {
-            return false;
-        }
-        return block.timestamp < att.expirationTimestamp;
+        LibIdentityStorage.Layout storage s = LibIdentityStorage.layout();
+        return s.premiumExpirations[tokenId] > block.timestamp;
     }
 
     /**
@@ -27,6 +20,8 @@ contract AttestationFacet {
      * @return The Unix timestamp of when the subscription expires.
      */
     function getPremiumExpiration(uint256 tokenId) public view returns (uint256) {
-        return s.premiumStatus[tokenId].expirationTimestamp;
+        LibIdentityStorage.Layout storage s = LibIdentityStorage.layout();
+        return s.premiumExpirations[tokenId];
     }
 }
+
