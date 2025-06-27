@@ -10,32 +10,36 @@ contract SubscriptionManagerFacet {
     event SubscriptionRenewed(uint256 indexed tokenId, uint256 newExpiration);
 
     /**
-     * Set harga dalam cent USD (misal: 500 = $5.00)
+     * PERUBAHAN: Mengatur harga dalam satuan WEI (misal: 1000000000000000 = 0.001 ETH)
+     * Pemilik kontrak memanggil fungsi ini untuk menetapkan harga baru.
      */
-    function setPriceInUSD(uint256 _priceInCents) external {
+    function setPriceInWei(uint256 _newPriceInWei) external {
         LibIdentityStorage.Layout storage s = LibIdentityStorage.layout();
         require(msg.sender == IOwnershipFacet(address(this)).owner(), "AFA: Must be admin");
-        s.priceInUSD = _priceInCents;
+        // Variabel penyimpanan sekarang menyimpan harga dalam Wei
+        s.priceInWei = _newPriceInWei;
     }
 
     /**
-     * Ambil harga premium
+     * PERUBAHAN: Mengambil harga premium dalam satuan WEI.
+     * Website Anda akan memanggil fungsi ini untuk mengetahui harga.
      */
-    function priceInCents() external view returns (uint256) {
+    function priceInWei() external view returns (uint256) {
         LibIdentityStorage.Layout storage s = LibIdentityStorage.layout();
-        return s.priceInUSD;
+        return s.priceInWei;
     }
 
     /**
-     * Upgrade NFT ke premium
+     * Upgrade NFT ke premium. Fungsi lain tidak diubah, hanya logika pengecekan harga.
      */
     function upgradeToPremium(uint256 tokenId) external payable {
         LibIdentityStorage.Layout storage s = LibIdentityStorage.layout();
         require(s._tokenIdToAddress[tokenId] == msg.sender, "Not token owner");
 
-        uint256 requiredPrice = s.priceInUSD;
+        // PERUBAHAN: Logika pengecekan harga sekarang langsung menggunakan Wei
+        uint256 requiredPrice = s.priceInWei; // Mengambil harga dalam Wei
         require(requiredPrice > 0, "Premium price not set");
-        require(msg.value >= requiredPrice, "Insufficient payment");
+        require(msg.value >= requiredPrice, "Insufficient ETH payment"); // Membandingkan dengan ETH yang dikirim
 
         s.premiumExpirations[tokenId] = block.timestamp + 30 days;
 
@@ -43,7 +47,7 @@ contract SubscriptionManagerFacet {
     }
 
     /**
-     * Cek kapan masa premium habis
+     * (TIDAK BERUBAH) Cek kapan masa premium habis.
      */
     function getPremiumExpiration(uint256 tokenId) external view returns (uint256) {
         LibIdentityStorage.Layout storage s = LibIdentityStorage.layout();
@@ -51,11 +55,10 @@ contract SubscriptionManagerFacet {
     }
 
     /**
-     * Apakah tokenId masih premium
+     * (TIDAK BERUBAH) Apakah tokenId masih premium.
      */
     function isPremium(uint256 tokenId) external view returns (bool) {
         LibIdentityStorage.Layout storage s = LibIdentityStorage.layout();
         return s.premiumExpirations[tokenId] > block.timestamp;
     }
 }
-

@@ -12,7 +12,10 @@ library LibIdentityStorage {
 
         // Premium
         mapping(uint256 => uint256) premiumExpirations;
-        uint256 priceInUSD;
+        
+        // --- PERBAIKAN UTAMA ADA DI SINI ---
+        // Nama variabel diubah agar cocok dengan logika baru di SubscriptionManagerFacet
+        uint256 priceInWei;
 
         // ERC721Enumerable
         mapping(address => mapping(uint256 => uint256)) _ownedTokens;
@@ -54,4 +57,3 @@ library LibIdentityStorage {
         s._allTokens.push(tokenId);
     }
 }
-
