@@ -2,3 +2,4 @@ npx hardhat run scripts/deployDiamondFull.js --network optimismSepolia
 npx hardhat run scripts/deployDiamondFullBASE.js --network baseSepolia
 verif
 npx hardhat run scripts/diamondCutPriceInCents.js --network optimismSepolia
+

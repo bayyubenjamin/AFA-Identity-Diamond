@@ -3,21 +3,17 @@ pragma solidity ^0.8.24;
 
 library LibIdentityStorage {
     struct Layout {
-        // Identity
+
         mapping(address => uint256) _addressToTokenId;
         mapping(uint256 => address) _tokenIdToAddress;
         address verifierAddress;
         string baseURI;
         mapping(address => uint256) nonce;
 
-        // Premium
         mapping(uint256 => uint256) premiumExpirations;
         
-        // --- PERBAIKAN UTAMA ADA DI SINI ---
-        // Nama variabel diubah agar cocok dengan logika baru di SubscriptionManagerFacet
         uint256 priceInWei;
 
-        // ERC721Enumerable
         mapping(address => mapping(uint256 => uint256)) _ownedTokens;
         mapping(uint256 => uint256) _ownedTokensIndex;
         uint256[] _allTokens;
@@ -25,7 +21,6 @@ library LibIdentityStorage {
         mapping(uint256 => address) _owners;
         mapping(address => uint256) _balances;
 
-        // Tracker
         uint256 _tokenIdTracker;
     }
 
@@ -38,7 +33,6 @@ library LibIdentityStorage {
         }
     }
 
-    // Optional mint helper
     function _mint(Layout storage s, address to) internal returns (uint256 tokenId) {
         require(to != address(0), "mint to zero address");
         require(s._addressToTokenId[to] == 0, "AFA: Address already has an identity");
@@ -49,7 +43,6 @@ library LibIdentityStorage {
         s._owners[tokenId] = to;
         s._balances[to] += 1;
 
-        // ERC721Enumerable logic
         uint256 len = s._balances[to] - 1;
         s._ownedTokens[to][len] = tokenId;
         s._ownedTokensIndex[tokenId] = len;

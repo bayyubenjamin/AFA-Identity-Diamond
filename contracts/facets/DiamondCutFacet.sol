@@ -58,7 +58,6 @@ contract DiamondCutFacet is IDiamondCut {
             bytes4 selector = _functionSelectors[i];
             uint256 position = ds.selectorPosition[selector];
             require(position != 0 || ds.selectors[0] == selector, "DiamondCut: Can't remove function that doesn't exist");
-            // Mengganti selector yang dihapus dengan yang terakhir, lalu memotong array
             bytes4 lastSelector = ds.selectors[ds.selectors.length - 1];
             ds.selectors[position] = lastSelector;
             ds.selectorPosition[lastSelector] = position;

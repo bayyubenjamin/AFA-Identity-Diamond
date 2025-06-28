@@ -7,13 +7,9 @@ library LibDiamond {
     bytes32 constant DIAMOND_STORAGE_POSITION = keccak256("diamond.standard.diamond.storage");
 
     struct DiamondStorage {
-        // mapping dari selector fungsi ke alamat facet
         mapping(bytes4 => address) facetAddress;
-        // array dari semua selector fungsi yang ada di diamond
         bytes4[] selectors;
-        // mapping dari selector fungsi ke posisinya di dalam array selectors
         mapping(bytes4 => uint256) selectorPosition;
-        // alamat pemilik kontrak
         address contractOwner;
     }
 

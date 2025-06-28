@@ -1,5 +1,3 @@
-// contracts/facets/OwnershipFacet.sol (FINAL CORRECTED VERSION)
-
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.20;
 
@@ -18,14 +16,10 @@ contract OwnershipFacet {
         ds.contractOwner = _newOwner;
     }
 
-    // --- FUNGSI DENGAN PERBAIKAN ---
-    // Fungsi ini memungkinkan owner untuk menarik seluruh saldo ETH dari kontrak Diamond.
     function withdraw() external {
         LibDiamond.DiamondStorage storage ds = LibDiamond.diamondStorage();
-        // Memastikan hanya owner yang bisa memanggil fungsi ini
         require(msg.sender == ds.contractOwner, "OwnershipFacet: Must be contract owner");
         
-        // PERBAIKAN: Menggunakan .call() yang lebih aman dan direkomendasikan daripada .transfer()
         (bool success, ) = ds.contractOwner.call{value: address(this).balance}("");
         require(success, "Withdrawal: ETH transfer failed");
     }

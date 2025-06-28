@@ -18,7 +18,6 @@ contract Diamond {
             functionSelectors: functionSelectors
         });
 
-        // Panggil diamondCut secara internal
         (bool success, ) = _diamondCutFacet.delegatecall(
             abi.encodeWithSelector(IDiamondCut.diamondCut.selector, cut, address(0), "")
         );

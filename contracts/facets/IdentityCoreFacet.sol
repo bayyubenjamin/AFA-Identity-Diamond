@@ -12,7 +12,6 @@ import {MessageHashUtils} from "@openzeppelin/contracts/utils/cryptography/Messa
 contract IdentityCoreFacet is IERC721Metadata {
     using LibIdentityStorage for LibIdentityStorage.Layout;
 
-    // --- ERC721 View Functions ---
 
     function name() external pure override returns (string memory) {
         return "AFA Identity";
@@ -41,7 +40,6 @@ contract IdentityCoreFacet is IERC721Metadata {
             : "";
     }
 
-    // --- Soulbound Logic ---
 
     function approve(address, uint256) external pure override {
         revert("AFA: Soulbound token cannot be approved");
@@ -71,7 +69,6 @@ contract IdentityCoreFacet is IERC721Metadata {
         revert("AFA: Soulbound token cannot be transferred");
     }
 
-    // --- ERC165 Interface Support ---
 
     function supportsInterface(bytes4 interfaceId) external pure returns (bool) {
         return
@@ -80,7 +77,6 @@ contract IdentityCoreFacet is IERC721Metadata {
             interfaceId == type(IDiamondLoupe).interfaceId;
     }
 
-    // --- Initialization Function ---
     function initialize(address verifier_, string memory _baseURI) external {
         LibIdentityStorage.Layout storage s = LibIdentityStorage.layout();
         require(s.verifierAddress == address(0), "Already initialized");
@@ -88,15 +84,12 @@ contract IdentityCoreFacet is IERC721Metadata {
         s.baseURI = _baseURI;
     }
 
-    // --- Minting and Query Functions ---
 
     function mintIdentity(bytes calldata _signature) external payable {
         LibIdentityStorage.Layout storage s = LibIdentityStorage.layout();
 
-        // Buat hash yang SAMA PERSIS dengan di backend
         bytes32 messageHash = keccak256(abi.encodePacked("AFA_MINT:", msg.sender, s.nonce[msg.sender]));
 
-        // Langsung pulihkan dari hash mentah, bukan dari "eth signed message hash"
         address signer = ECDSA.recover(messageHash, _signature);
 
         require(signer == s.verifierAddress, "AFA: Invalid signature");
@@ -106,7 +99,6 @@ contract IdentityCoreFacet is IERC721Metadata {
 
         s.nonce[msg.sender]++;
 
-        // Mint & emit event Transfer langsung dari facet
         uint256 tokenId = s._mint(recipient);
         emit Transfer(address(0), recipient, tokenId);
     }
@@ -120,7 +112,6 @@ contract IdentityCoreFacet is IERC721Metadata {
         }
     }
 
-    // --- GETTER BARU: Agar bisa diakses dari Diamond proxy ---
     function verifier() external view returns (address) {
         return LibIdentityStorage.layout().verifierAddress;
     }
