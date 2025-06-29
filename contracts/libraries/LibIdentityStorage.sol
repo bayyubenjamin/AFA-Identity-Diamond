@@ -2,17 +2,21 @@
 pragma solidity ^0.8.24;
 
 library LibIdentityStorage {
-    struct Layout {
+    enum SubscriptionTier {
+        ONE_MONTH,
+        SIX_MONTHS,
+        ONE_YEAR
+    }
 
+    struct Layout {
         mapping(address => uint256) _addressToTokenId;
         mapping(uint256 => address) _tokenIdToAddress;
         address verifierAddress;
         string baseURI;
         mapping(address => uint256) nonce;
-
         mapping(uint256 => uint256) premiumExpirations;
         
-        uint256 priceInWei;
+        mapping(SubscriptionTier => uint256) pricePerTierInWei;
 
         mapping(address => mapping(uint256 => uint256)) _ownedTokens;
         mapping(uint256 => uint256) _ownedTokensIndex;
@@ -20,7 +24,6 @@ library LibIdentityStorage {
         mapping(uint256 => uint256) _allTokensIndex;
         mapping(uint256 => address) _owners;
         mapping(address => uint256) _balances;
-
         uint256 _tokenIdTracker;
     }
 

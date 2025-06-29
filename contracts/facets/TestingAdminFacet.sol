@@ -37,4 +37,3 @@ contract TestingAdminFacet {
         emit AdminIdentityMinted(_recipient, tokenId);
     }
 }
-

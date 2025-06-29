@@ -1,10 +1,6 @@
-
 const { ethers } = require("hardhat");
 const { FacetNames } = require("../diamondConfig.js");
 
-// This is a helper function from your old script.
-// In ethers v6, it's better to use Contract.interface.getFunction('myFunction').selector,
-// but we will keep this for now to match your existing logic.
 function getSelector(signature) {
     return ethers.id(signature).substring(0, 10);
 }
@@ -21,11 +17,9 @@ async function main() {
         const FacetFactory = await ethers.getContractFactory(facetName);
         const facet = await FacetFactory.deploy();
         
-        // --- FIX: Use .waitForDeployment() for ethers v6 ---
         await facet.waitForDeployment();
         
         facetContracts[facetName] = facet;
-        // --- FIX: Use .getAddress() for ethers v6 ---
         console.log(`✅ ${facetName} deployed to: ${await facet.getAddress()}`);
     }
 
@@ -43,11 +37,20 @@ async function main() {
     // Construct Diamond Cut
     console.log("\n🧩 Constructing Diamond Cut...");
     const cut = [];
+
+    // --- PERUBAHAN UTAMA: Memperbarui daftar fungsi untuk SubscriptionManagerFacet ---
     const selectorsMap = {
         DiamondLoupeFacet: ["facets()", "facetFunctionSelectors(address)", "facetAddress(bytes4)", "supportsInterface(bytes4)"],
         OwnershipFacet: ["owner()", "transferOwnership(address)", "withdraw()"],
         IdentityCoreFacet: ["mintIdentity(bytes)", "getIdentity(address)", "verifier()", "baseURI()", "name()", "symbol()", "balanceOf(address)", "ownerOf(uint256)", "tokenURI(uint256)", "initialize(address,string)"],
-        SubscriptionManagerFacet: ["setPriceInWei(uint256)", "priceInWei()", "upgradeToPremium(uint256)", "getPremiumExpiration(uint256)", "isPremium(uint256)"],
+        // Menggunakan fungsi-fungsi baru untuk multi-tier subscription
+        SubscriptionManagerFacet: [
+            "setPriceForTier(uint8,uint256)", 
+            "getPriceForTier(uint8)", 
+            "upgradeToPremium(uint256,uint8)", 
+            "getPremiumExpiration(uint256)", 
+            "isPremium(uint256)"
+        ],
         AttestationFacet: ["attest(bytes32,bytes32)", "getAttestation(bytes32)"],
         TestingAdminFacet: ["adminMint(address)"],
         IdentityEnumerableFacet: ["totalSupply()", "tokenByIndex(uint256)", "tokenOfOwnerByIndex(address,uint256)"]
@@ -80,14 +83,39 @@ async function main() {
     await tx.wait();
     console.log("✅ DiamondCut and initialization successful.");
 
-    // Set initial price (optional but recommended)
-    const initialPriceInWei = ethers.parseEther("0.001"); // Set initial price to 0.001 ETH
+    // --- PENAMBAHAN BARU: Mengatur harga untuk setiap paket premium ---
+    console.log("\n🛠️  Setting initial prices for subscription tiers...");
     const subscriptionManager = await ethers.getContractAt("SubscriptionManagerFacet", diamondAddress);
-    console.log(`\n🛠  Setting initial price to ${ethers.formatEther(initialPriceInWei)} ETH...`);
-    const setPriceTx = await subscriptionManager.setPriceInWei(initialPriceInWei);
-    await setPriceTx.wait();
-    console.log("✅ Initial price has been set.");
+    
+    // Konfigurasi harga (ubah sesuai kebutuhan Anda)
+    // Tier 0 = 1 Bulan
+    // Tier 1 = 6 Bulan
+    // Tier 2 = 1 Tahun
+    const prices = {
+        oneMonth: ethers.parseEther("0.0004"), // Contoh: 0.0004 ETH
+        sixMonths: ethers.parseEther("0.0025"), // Contoh: 0.0025 ETH (Diskon)
+        oneYear: ethers.parseEther("0.005")    // Contoh: 0.005 ETH (Diskon lebih besar)
+    };
 
+    // Mengatur harga untuk 1 Bulan (Tier 0)
+    console.log(`   - Setting 1-Month price to ${ethers.formatEther(prices.oneMonth)} ETH...`);
+    let setPriceTx = await subscriptionManager.setPriceForTier(0, prices.oneMonth);
+    await setPriceTx.wait();
+    console.log("     ✅ Done.");
+
+    // Mengatur harga untuk 6 Bulan (Tier 1)
+    console.log(`   - Setting 6-Month price to ${ethers.formatEther(prices.sixMonths)} ETH...`);
+    setPriceTx = await subscriptionManager.setPriceForTier(1, prices.sixMonths);
+    await setPriceTx.wait();
+    console.log("     ✅ Done.");
+
+    // Mengatur harga untuk 1 Tahun (Tier 2)
+    console.log(`   - Setting 1-Year price to ${ethers.formatEther(prices.oneYear)} ETH...`);
+    setPriceTx = await subscriptionManager.setPriceForTier(2, prices.oneYear);
+    await setPriceTx.wait();
+    console.log("     ✅ Done.");
+    
+    console.log("✅ Initial prices for all tiers have been set.");
     console.log("\n🎉 Deployment complete! Diamond is ready at:", diamondAddress);
 }
 
@@ -97,4 +125,3 @@ main()
         console.error("❌ Uncaught error in script:", error);
         process.exit(1);
     });
-
