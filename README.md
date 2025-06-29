@@ -1,6 +1,6 @@
 # Afa Identity Diamond 💎
 
-[![Build Status](https://img.shields.io/travis/com/your-username/afa-identity-diamond.svg?style=flat-square)](https://travis-ci.com/your-username/afa-identity-diamond)
+[![Build Status](https://img.shields.io/travis/com/your-username/afa-identity-diamond.svg?style=flat-square)](https://travis-ci.com/bayyubenjamin/afa-identity-diamond)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg?style=flat-square)](https://opensource.org/licenses/MIT)
 
 **Afa Identity Diamond** is a sophisticated decentralized identity (DID) system built using the **EIP-2535 Diamond Standard**. This project not only provides a robust foundation for secure digital identity management but also integrates a powerful **on-chain premium subscription system** through its `SubscriptionManagerFacet`.
