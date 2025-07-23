@@ -8,6 +8,7 @@ import "@nomicfoundation/hardhat-ethers";
 // Mengambil variabel dari file .env
 const PRIVATE_KEY = process.env.PRIVATE_KEY || "";
 const HELIOS_API_KEY = process.env.HELIOS_API_KEY || "";
+const PHAROS_API_KEY = process.env.PHAROS_API_KEY || "NO_API_KEY"; // Default jika tidak ada
 
 const config: HardhatUserConfig = {
   solidity: {
@@ -40,11 +41,23 @@ const config: HardhatUserConfig = {
       accounts: PRIVATE_KEY ? [PRIVATE_KEY] : [],
       chainId: 11155420,
     },
-    // --- PENAMBAHAN JARINGAN HELIOS ---
+    // --- JARINGAN HELIOS ---
     helios: {
       url: "https://testnet1.helioschainlabs.org",
       accounts: PRIVATE_KEY ? [PRIVATE_KEY] : [],
       chainId: 42000,
+    },
+    // --- JARINGAN PHAROS TESTNET ---
+    pharosTestnet: {
+      url: "https://testnet.dplabs-internal.com",
+      accounts: PRIVATE_KEY ? [PRIVATE_KEY] : [],
+      chainId: 688688,
+    },
+    // --- JARINGAN PHAROS DEVNET ---
+    pharosDevnet: {
+      url: "https://devnet.dplabs-internal.com",
+      accounts: PRIVATE_KEY ? [PRIVATE_KEY] : [],
+      chainId: 50002,
     },
   },
   etherscan: {
@@ -55,8 +68,11 @@ const config: HardhatUserConfig = {
       base: process.env.BASESCAN_API_KEY || "",
       baseSepolia: process.env.BASESCAN_API_KEY || "",
       optimismSepolia: process.env.OPTIMISTIC_ETHERSCAN_API_KEY || "",
-      // --- PENAMBAHAN API KEY HELIOS ---
+      // API Key untuk Helios
       helios: HELIOS_API_KEY,
+      // API Key untuk Pharos
+      pharosTestnet: PHAROS_API_KEY,
+      pharosDevnet: PHAROS_API_KEY,
     },
     customChains: [
       {
@@ -83,13 +99,31 @@ const config: HardhatUserConfig = {
           browserURL: "https://sepolia-optimism.etherscan.io",
         },
       },
-      // --- PENAMBAHAN CUSTOM CHAIN HELIOS ---
+      // Konfigurasi Custom Chain untuk Helios
       {
         network: "helios",
         chainId: 42000,
         urls: {
-          apiURL: "https://explorer.helioschainlabs.org/api", // URL untuk verifikasi
-          browserURL: "https://explorer.helioschainlabs.org", // URL block explorer
+          apiURL: "https://explorer.helioschainlabs.org/api",
+          browserURL: "https://explorer.helioschainlabs.org",
+        },
+      },
+      // Konfigurasi Custom Chain untuk Pharos Testnet
+      {
+        network: "pharosTestnet",
+        chainId: 688688,
+        urls: {
+          apiURL: "https://testnet.pharosscan.xyz/api",
+          browserURL: "https://testnet.pharosscan.xyz/",
+        },
+      },
+      // Konfigurasi Custom Chain untuk Pharos Devnet
+      {
+        network: "pharosDevnet",
+        chainId: 50002,
+        urls: {
+          apiURL: "https://devnet.pharosscan.xyz/api",
+          browserURL: "https://devnet.pharosscan.xyz/",
         },
       },
     ],
