@@ -1,14 +1,13 @@
 import { HardhatUserConfig } from "hardhat/config";
 import "dotenv/config";
 
-// PERBAIKAN 1: Impor plugin yang dibutuhkan
-// Plugin ini akan menambahkan tugas 'verify' ke Hardhat
+// Impor plugin yang dibutuhkan
 import "@nomicfoundation/hardhat-verify"; 
-import "@nomicfoundation/hardhat-ethers"; // Praktik terbaik untuk interaksi dengan ethers
+import "@nomicfoundation/hardhat-ethers";
 
-
-// Mengambil private key dari file .env
+// Mengambil variabel dari file .env
 const PRIVATE_KEY = process.env.PRIVATE_KEY || "";
+const HELIOS_API_KEY = process.env.HELIOS_API_KEY || "";
 
 const config: HardhatUserConfig = {
   solidity: {
@@ -20,7 +19,6 @@ const config: HardhatUserConfig = {
       },
     },
   },
-  // Semua jaringan Anda dipertahankan
   networks: {
     sepolia: {
       url: process.env.SEPOLIA_RPC_URL || "",
@@ -37,20 +35,28 @@ const config: HardhatUserConfig = {
       accounts: PRIVATE_KEY ? [PRIVATE_KEY] : [],
       chainId: 8453,
     },
-    optimismSepolia: { // Ini adalah jaringan yang kita deploy
+    optimismSepolia: {
       url: process.env.OPTIMISM_SEPOLIA_RPC_URL || "https://sepolia.optimism.io",
       accounts: PRIVATE_KEY ? [PRIVATE_KEY] : [],
       chainId: 11155420,
     },
+    // --- PENAMBAHAN JARINGAN HELIOS ---
+    helios: {
+      url: "https://testnet1.helioschainlabs.org",
+      accounts: PRIVATE_KEY ? [PRIVATE_KEY] : [],
+      chainId: 42000,
+    },
   },
   etherscan: {
     apiKey: {
-      // PERBAIKAN 2: Nama jaringan di sini harus SAMA PERSIS dengan di blok 'networks'
+      // API Keys untuk jaringan yang sudah ada
       mainnet: process.env.ETHERSCAN_API_KEY || "",
       sepolia: process.env.ETHERSCAN_API_KEY || "",
       base: process.env.BASESCAN_API_KEY || "",
       baseSepolia: process.env.BASESCAN_API_KEY || "",
-      optimismSepolia: process.env.OPTIMISTIC_ETHERSCAN_API_KEY || "", // 'optimisticSepolia' diubah menjadi 'optimismSepolia'
+      optimismSepolia: process.env.OPTIMISTIC_ETHERSCAN_API_KEY || "",
+      // --- PENAMBAHAN API KEY HELIOS ---
+      helios: HELIOS_API_KEY,
     },
     customChains: [
       {
@@ -70,12 +76,20 @@ const config: HardhatUserConfig = {
         },
       },
       {
-        // PERBAIKAN 3: Nama jaringan di sini juga harus SAMA PERSIS
-        network: "optimismSepolia", // 'optimisticSepolia' diubah menjadi 'optimismSepolia'
+        network: "optimismSepolia",
         chainId: 11155420,
         urls: {
           apiURL: "https://api-sepolia-optimism.etherscan.io/api",
           browserURL: "https://sepolia-optimism.etherscan.io",
+        },
+      },
+      // --- PENAMBAHAN CUSTOM CHAIN HELIOS ---
+      {
+        network: "helios",
+        chainId: 42000,
+        urls: {
+          apiURL: "https://explorer.helioschainlabs.org/api", // URL untuk verifikasi
+          browserURL: "https://explorer.helioschainlabs.org", // URL block explorer
         },
       },
     ],
