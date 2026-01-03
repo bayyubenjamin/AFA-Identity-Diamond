@@ -1,128 +1,159 @@
 const { ethers, network } = require("hardhat");
 const { FacetNames } = require("../diamondConfig.js");
 
-// Fungsi helper untuk mendapatkan function selector dari signature fungsi
-function getSelector(signature) {
-    return ethers.id(signature).substring(0, 10);
+/**
+ * KONFIGURASI DEPLOYMENT
+ * Ubah nilai di sini untuk mengganti parameter tanpa menyentuh logika script.
+ */
+const CONFIG = {
+    verifierAddress: "0xE0F4e897D99D8F7642DaA807787501154D316870",
+    metadataBaseURI: "https://cxoykbwigsfheaegpwke.supabase.co/functions/v1/metadata/",
+    // Enum FacetCutAction dari standar Diamond (0 = Add, 1 = Replace, 2 = Remove)
+    FacetCutAction: { Add: 0, Replace: 1, Remove: 2 },
+    // Harga Subscription
+    pricing: [
+        { tierId: 0, price: "0.0004", name: "1 Month" },
+        { tierId: 1, price: "0.0025", name: "6 Months" },
+        { tierId: 2, price: "0.005",  name: "1 Year" }
+    ]
+};
+
+/**
+ * HELPER: Mengambil selector fungsi secara dinamis dari interface kontrak.
+ * Tidak perlu lagi mengetik manual nama fungsi satu per satu!
+ */
+function getSelectors(contract) {
+    const signatures = [];
+    contract.interface.forEachFunction((func) => {
+        if (func.name !== 'init' && func.name !== 'initialize') { // Biasanya init tidak dimasukkan ke loupe
+            signatures.push(func.selector);
+        }
+    });
+    return signatures;
 }
 
-// Fungsi utama untuk proses deployment
+/**
+ * HELPER: Wrapper untuk deploy kontrak biasa
+ */
+async function deployContract(contractName, args = []) {
+    const Factory = await ethers.getContractFactory(contractName);
+    const contract = await Factory.deploy(...args);
+    await contract.waitForDeployment();
+    return contract;
+}
+
 async function main() {
     const [deployer] = await ethers.getSigners();
-    
-    // --- Konfigurasi Terpusat ---
-    // Alamat verifier dan URI metadata sekarang ditetapkan di satu tempat
-    // untuk semua jaringan agar konsisten.
-    const verifierWalletAddress = "0xE0F4e897D99D8F7642DaA807787501154D316870";
-    const metadataBaseURI = "https://cxoykbwigsfheaegpwke.supabase.co/functions/v1/metadata/";
 
-    console.log(`\n🌐 Deploying to network: ${network.name}`);
-    console.log("🔨 Deploying contracts with the account:", deployer.address);
-    const balance = await ethers.provider.getBalance(deployer.address);
-    console.log("💰 Account balance:", ethers.formatEther(balance));
-    console.log(`🔍 Using Verifier Address: ${verifierWalletAddress}`);
-    console.log(`🔗 Using Metadata Base URI: ${metadataBaseURI}`);
-    
-    // 1. Deploy Facets
-    console.log("\n🚀 Deploying facets...");
-    const facetContracts = {};
-    for (const facetName of FacetNames) {
-        const FacetFactory = await ethers.getContractFactory(facetName);
-        const facet = await FacetFactory.deploy();
-        await facet.waitForDeployment();
-        facetContracts[facetName] = facet;
-        console.log(`✅ ${facetName} deployed to: ${await facet.getAddress()}`);
-    }
+    console.log("=================================================");
+    console.log(`🚀 STARTING DEPLOYMENT | Network: ${network.name}`);
+    console.log(`👨‍💻 Deployer: ${deployer.address}`);
+    console.log(`💰 Balance: ${ethers.formatEther(await ethers.provider.getBalance(deployer.address))} ETH`);
+    console.log("=================================================\n");
 
-    // 2. Deploy Diamond
-    console.log("\n💎 Deploying Diamond...");
-    const DiamondFactory = await ethers.getContractFactory("Diamond");
-    const diamondContract = await DiamondFactory.deploy(
-        deployer.address,
-        await facetContracts["DiamondCutFacet"].getAddress()
-    );
-    await diamondContract.waitForDeployment();
-    const diamondAddress = await diamondContract.getAddress();
-    console.log(`✅ Diamond proxy deployed to: ${diamondAddress}`);
+    // --- STEP 1: Deploy Semua Facet ---
+    console.log("🏗️  1. Deploying Facets...");
+    const facetAddresses = {};
+    const deployedFacets = []; // Menyimpan instance kontrak untuk ekstraksi selector
 
-    // 3. Construct Diamond Cut
-    console.log("\n🧩 Constructing Diamond Cut...");
-    const cut = [];
-    const selectorsMap = {
-        DiamondLoupeFacet: ["facets()", "facetFunctionSelectors(address)", "facetAddress(bytes4)", "supportsInterface(bytes4)"],
-        OwnershipFacet: ["owner()", "transferOwnership(address)", "withdraw()"],
-        IdentityCoreFacet: ["mintIdentity(bytes)", "getIdentity(address)", "verifier()", "baseURI()", "name()", "symbol()", "balanceOf(address)", "ownerOf(uint256)", "tokenURI(uint256)", "initialize(address,string)"],
-        SubscriptionManagerFacet: [
-            "setPriceForTier(uint8,uint256)", 
-            "getPriceForTier(uint8)", 
-            "upgradeToPremium(uint256,uint8)", 
-            "getPremiumExpiration(uint256)", 
-            "isPremium(uint256)"
-        ],
-        AttestationFacet: ["attest(bytes32,bytes32)", "getAttestation(bytes32)"],
-        TestingAdminFacet: ["adminMint(address)"],
-        IdentityEnumerableFacet: ["totalSupply()", "tokenByIndex(uint256)", "tokenOfOwnerByIndex(address,uint256)"]
-    };
-
-    for (const facetName of FacetNames) {
-        if (facetName === "DiamondCutFacet") continue;
-        
-        const selectors = (selectorsMap[facetName] || []).map(getSelector);
-        if (selectors.length > 0) {
-            cut.push({
-                facetAddress: await facetContracts[facetName].getAddress(),
-                action: 0, // Add
-                functionSelectors: selectors
-            });
+    for (const name of FacetNames) {
+        try {
+            const facet = await deployContract(name);
+            const address = await facet.getAddress();
+            console.log(`   ✅ ${name.padEnd(25)} : ${address}`);
+            
+            facetAddresses[name] = address;
+            deployedFacets.push({ name, contract: facet, address });
+        } catch (error) {
+            console.error(`   ❌ Failed to deploy ${name}:`, error.message);
+            process.exit(1);
         }
     }
-    console.log("✅ Diamond Cut Summary prepared.");
 
-    // 4. Perform diamondCut and initialize
-    const diamondCutInstance = await ethers.getContractAt("IDiamondCut", diamondAddress);
-    const initFacet = facetContracts["IdentityCoreFacet"];
-    const functionCall = initFacet.interface.encodeFunctionData("initialize", [
-        verifierWalletAddress,
-        metadataBaseURI,
+    // --- STEP 2: Deploy Diamond Base ---
+    console.log("\n💎 2. Deploying Diamond Proxy...");
+    // DiamondCutFacet diperlukan saat konstruksi Diamond
+    if (!facetAddresses["DiamondCutFacet"]) {
+        throw new Error("DiamondCutFacet must be included in FacetNames array!");
+    }
+
+    const diamond = await deployContract("Diamond", [
+        deployer.address, 
+        facetAddresses["DiamondCutFacet"]
+    ]);
+    const diamondAddress = await diamond.getAddress();
+    console.log(`   ✅ DIAMOND DEPLOYED AT: ${diamondAddress}`);
+
+    // --- STEP 3: Membangun Diamond Cut (Secara Otomatis) ---
+    console.log("\n✂️  3. Constructing Diamond Cut (Dynamic Selector Extraction)...");
+    const cut = [];
+    
+    for (const facetData of deployedFacets) {
+        // Skip DiamondCutFacet karena sudah ditambahkan saat constructor Diamond dipanggil
+        if (facetData.name === "DiamondCutFacet") continue;
+
+        const selectors = getSelectors(facetData.contract);
+        
+        if (selectors.length > 0) {
+            cut.push({
+                facetAddress: facetData.address,
+                action: CONFIG.FacetCutAction.Add,
+                functionSelectors: selectors
+            });
+            console.log(`   🔹 Added ${selectors.length} selectors from ${facetData.name}`);
+        } else {
+            console.warn(`   ⚠️  Warning: No public functions found in ${facetData.name}`);
+        }
+    }
+
+    // --- STEP 4: Eksekusi Diamond Cut & Initialize ---
+    console.log("\n🔌 4. Executing DiamondCut & Initialization...");
+    
+    // Kita menggunakan IdentityCoreFacet untuk inisialisasi awal
+    const initFacetName = "IdentityCoreFacet";
+    const initFacetContract = deployedFacets.find(f => f.name === initFacetName).contract;
+    
+    // Encode fungsi initialize
+    const functionCall = initFacetContract.interface.encodeFunctionData("initialize", [
+        CONFIG.verifierAddress,
+        CONFIG.metadataBaseURI,
     ]);
 
-    console.log("\n🚀 Performing diamondCut and initialization...");
-    const tx = await diamondCutInstance.diamondCut(cut, await initFacet.getAddress(), functionCall);
+    // Panggil fungsi diamondCut melalui interface IDiamondCut di alamat Diamond
+    const diamondCut = await ethers.getContractAt("IDiamondCut", diamondAddress);
+    
+    const tx = await diamondCut.diamondCut(
+        cut,
+        facetAddresses[initFacetName], // Alamat kontrak yang punya fungsi init
+        functionCall                   // Data calldata untuk init
+    );
+    
+    console.log(`   ⏳ Transaction hash: ${tx.hash}`);
     await tx.wait();
-    console.log("✅ DiamondCut and initialization successful.");
+    console.log("   ✅ Diamond Cut & Initialization Complete!");
 
-    // 5. Mengatur harga untuk setiap paket premium
-    console.log("\n🛠️  Setting initial prices for subscription tiers...");
+    // --- STEP 5: Konfigurasi Lanjutan (Pricing) ---
+    console.log("\n🏷️  5. Setting Subscription Prices...");
     const subscriptionManager = await ethers.getContractAt("SubscriptionManagerFacet", diamondAddress);
-    
-    const prices = {
-        oneMonth: ethers.parseEther("0.0004"), 
-        sixMonths: ethers.parseEther("0.0025"),
-        oneYear: ethers.parseEther("0.005")   
-    };
 
-    console.log(`   - Setting 1-Month price to ${ethers.formatEther(prices.oneMonth)} ETH...`);
-    let setPriceTx = await subscriptionManager.setPriceForTier(0, prices.oneMonth);
-    await setPriceTx.wait();
-    console.log("     ✅ Done.");
+    for (const tier of CONFIG.pricing) {
+        const priceWei = ethers.parseEther(tier.price);
+        process.stdout.write(`   - Setting ${tier.name} (Tier ${tier.tierId}) to ${tier.price} ETH... `);
+        
+        const priceTx = await subscriptionManager.setPriceForTier(tier.tierId, priceWei);
+        await priceTx.wait();
+        console.log("✅ Done.");
+    }
 
-    console.log(`   - Setting 6-Month price to ${ethers.formatEther(prices.sixMonths)} ETH...`);
-    setPriceTx = await subscriptionManager.setPriceForTier(1, prices.sixMonths);
-    await setPriceTx.wait();
-    console.log("     ✅ Done.");
-
-    console.log(`   - Setting 1-Year price to ${ethers.formatEther(prices.oneYear)} ETH...`);
-    setPriceTx = await subscriptionManager.setPriceForTier(2, prices.oneYear);
-    await setPriceTx.wait();
-    console.log("     ✅ Done.");
-    
-    console.log("✅ Initial prices for all tiers have been set.");
-    console.log("\n🎉 Deployment complete! Diamond is ready at:", diamondAddress);
+    console.log("\n=================================================");
+    console.log("🎉 DEPLOYMENT FINISHED SUCCESSFULLY");
+    console.log(`📍 Diamond Address: ${diamondAddress}`);
+    console.log("=================================================");
 }
 
 main()
     .then(() => process.exit(0))
     .catch((error) => {
-        console.error("❌ Uncaught error in script:", error);
+        console.error("\n❌ FATAL ERROR:", error);
         process.exit(1);
     });
