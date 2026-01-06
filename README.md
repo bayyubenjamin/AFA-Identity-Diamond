@@ -1,50 +1,61 @@
 # Afa Identity Diamond 💎
 
-[![Build Status](https://img.shields.io/travis/com/your-username/afa-identity-diamond.svg?style=flat-square)](https://travis-ci.com/bayyubenjamin/afa-identity-diamond)
+[![Build Status](https://img.shields.io/travis/com/bayyubenjamin/afa-identity-diamond.svg?style=flat-square)](https://travis-ci.com/bayyubenjamin/afa-identity-diamond)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg?style=flat-square)](https://opensource.org/licenses/MIT)
 
-**Afa Identity Diamond** is a sophisticated decentralized identity (DID) system built using the **EIP-2535 Diamond Standard**. This project not only provides a robust foundation for secure digital identity management but also integrates a powerful **on-chain premium subscription system** through its `SubscriptionManagerFacet`.
+**Afa Identity Diamond** is a sophisticated decentralized identity (DID) system built using the **EIP-2535 Diamond Standard**. This project provides a robust foundation for secure digital identity management and integrates a powerful, production-grade **on-chain premium subscription system**.
 
-It is a complete, out-of-the-box solution for dApps looking to monetize their services by offering flexible and fully verifiable subscription tiers on the blockchain.
+Designed for scalability and gas efficiency, this contract utilizes **Custom Errors**, **Assembly-based Error Bubbling**, and strict security checks, making it a complete, out-of-the-box solution for dApps looking to monetize services securely on the blockchain.
 
 ## ✨ Key Features
 
 * **Decentralized Identity Management**: Securely manage digital identities on-chain through the `IdentityCoreFacet` and `IdentityEnumerableFacet`.
-* **Multi-Tier Premium Subscription System**: The `SubscriptionManagerFacet` allows users to subscribe to different tiers (e.g., monthly, yearly) and enables dApps to verify premium status on-chain.
-* **EIP-2535 Diamond Architecture**: The contract is highly modular and infinitely upgradeable, allowing for future functionality to be added without requiring a full contract migration.
-* **Decentralized Access Control**: dApps can easily restrict access to specific features, granting them only to users with an active premium subscription.
-* **Admin-Managed Pricing**: The contract owner can easily set the price for each subscription tier.
+* **Multi-Tier Premium Subscription**: Users can subscribe to flexible tiers (1 Month, 6 Months, 1 Year).
+* **Smart Treasury Management**: Integrated **Withdrawal Logic** ensures project owners can securely retrieve revenue.
+* **Auto-Refund Mechanism**: The contract automatically refunds excess ETH if a user overpays, ensuring a superior User Experience (UX).
+* **Gas Optimized**: Utilizes Solidity **Custom Errors** instead of string revert messages to significantly reduce deployment and execution costs.
+* **EIP-2535 Architecture**: Infinitely upgradeable without data migration.
 
 ---
 
 ## 💎 Feature Highlight: `SubscriptionManagerFacet`
 
-The core innovation of this project is **`SubscriptionManagerFacet.sol`**, a dedicated module designed for end-to-end management of premium subscriptions. It provides a turnkey solution for dApp developers to build sustainable business models.
+The `SubscriptionManagerFacet.sol` has been engineered for production use, focusing on security, economy, and fairness.
 
 ### Core Capabilities:
 
-* **Upgrade to Premium (`upgradeToPremium`)**: Users can pay in ETH to upgrade their identity status to a premium tier (e.g., 1 Month, 6 Months, 1 Year). The function automatically calculates and extends the subscription's validity.
-* **Status Verification (`isPremium`)**: A simple `view` function that can be called by any dApp to instantly check if an identity (token ID) has an active premium subscription. This is the key to unlocking exclusive features.
-* **Dynamic Pricing (`setPriceForTier`)**: The contract owner or an admin can easily set and update the price for each subscription package, providing full commercial flexibility.
-* **On-Chain Transparency**: All subscription details, including the expiration date (`getPremiumExpiration`), are transparently recorded on the blockchain.
+* **🚀 Upgrade to Premium (`upgradeToPremium`)** Users pay in ETH to upgrade. The system handles logic for:
+  * **Validity Extension**: Adds time to existing expiration if active, or starts fresh if expired.
+  * **Auto-Refund**: If the price is 0.1 ETH and the user sends 0.15 ETH, **0.05 ETH is instantly refunded**.
+  * **Security**: Validates token ownership and tier existence before processing.
 
-With `SubscriptionManagerFacet`, the once-complex process of dApp monetization is now straightforward and secure.
+* **💰 Treasury Withdrawal (`withdrawFunds`)** A secure, admin-only function to withdraw accumulated ETH revenue to a specified address. Includes safety checks against zero-address transfers and failed calls.
+
+* **🔍 Status Verification (`isPremium`)** A lightweight `view` function for dApps to instantly gate content based on valid subscription status.
+
+* **⚙️ Dynamic Pricing (`setPriceForTier`)** Admins can adjust subscription costs in real-time to respond to market conditions.
 
 ---
 
-## 🛠️ Technical & Architecture
+## 🛠️ Technical Architecture & Optimizations
 
-This project uses the **EIP-2535 Diamond Standard**, which allows a single contract address to proxy logic from multiple implementation contracts (called *facets*).
+This project leverages the **EIP-2535 Diamond Standard** to split logic into multiple implementation contracts (*facets*) while maintaining a single storage layout.
+
+### Advanced Improvements:
+
+* **Custom Errors (Gas Efficiency)**:  
+  Replaced expensive string requires (e.g., `require(cond, "Long Error Message")`) with custom errors (e.g., `error InsufficientPayment()`). This saves gas for users and reduces contract bytecode size.
+  
+* **Assembly Error Bubbling (`DiamondCutFacet`)**:  
+  The upgrade logic now uses inline Assembly to bubble up the *exact* revert reason from initialization delegates. This makes debugging upgrade failures significantly easier compared to standard implementations.
 
 ### Core Facets:
 
-* **`SubscriptionManagerFacet.sol`**: **Core Component.** Manages all logic related to premium subscriptions, including payments, renewals, and status verification.
-* **`IdentityCoreFacet.sol`**: Manages the basic logic for creating and managing core identity data.
-* **`IdentityEnumerableFacet.sol`**: Adds the ability to enumerate and track all existing identity tokens.
-* **`AttestationFacet.sol`**: Manages attestations or verified claims related to an identity.
-* **`DiamondCutFacet.sol`**: A standard Diamond function for upgrading functionality by adding/replacing/removing facets.
-* **`DiamondLoupeFacet.sol`**: A standard Diamond function for introspecting which facets and functions are attached to the Diamond.
-* **`OwnershipFacet.sol`**: Manages the ownership of the Diamond contract.
+* **`SubscriptionManagerFacet.sol`**: Manages payments, refunds, validity logic, and revenue withdrawal.
+* **`DiamondCutFacet.sol`**: Standard Diamond upgrade logic, enhanced with strict `address(0)` checks for removals and assembly error handling.
+* **`IdentityCoreFacet.sol`**: Core identity creation and management.
+* **`IdentityEnumerableFacet.sol`**: Enumeration of identity tokens.
+* **`OwnershipFacet.sol`**: Manages contract ownership and permissions.
 
 ---
 
@@ -52,7 +63,7 @@ This project uses the **EIP-2535 Diamond Standard**, which allows a single contr
 
 ### Prerequisites
 
-* [Node.js](https://nodejs.org/en/)
+* [Node.js](https://nodejs.org/en/) >= 18
 * [Yarn](https://yarnpkg.com/) or [npm](https://www.npmjs.com/)
 * [Hardhat](https://hardhat.org/)
 
@@ -60,15 +71,27 @@ This project uses the **EIP-2535 Diamond Standard**, which allows a single contr
 
 1.  **Clone this repository:**
     ```sh
-    git clone [https://github.com/your-username/afa-identity-diamond.git](https://github.com/your-username/afa-identity-diamond.git)
+    git clone [https://github.com/bayyubenjamin/afa-identity-diamond.git](https://github.com/bayyubenjamin/afa-identity-diamond.git)
     cd afa-identity-diamond
     ```
 
 2.  **Install dependencies:**
     ```sh
     npm install
+    # or
+    yarn install
+    ```
+
+3.  **Compile Contracts:**
+    ```sh
+    npx hardhat compile
     ```
 
 ### Configuration
 
-Create a `.env` file in the project root and add the necessary variables, such as your private key for deployment and an RPC node URL. You can copy from `.env.example` if it exists.
+Create a `.env` file in the project root to configure your deployment environment:
+
+```env
+PRIVATE_KEY=your_private_key_here
+RPC_URL=your_rpc_url_here
+ETHERSCAN_API_KEY=your_api_key
