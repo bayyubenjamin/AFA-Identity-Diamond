@@ -1,77 +1,133 @@
-
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.24;
 
-import {LibDiamond} from "../diamond/libraries/LibDiamond.sol";
-import {IDiamondCut} from "../interfaces/IDiamondCut.sol";
+import { LibDiamond } from "../diamond/libraries/LibDiamond.sol";
+import { IDiamondCut } from "../interfaces/IDiamondCut.sol";
 
 contract DiamondCutFacet is IDiamondCut {
+    // --- Custom Errors (Gas Efficient) ---
+    error IncorrectFacetCutAction(FacetCutAction action);
+    error InitCallFailed();
+    error FacetAddressIsZero();
+    error FacetAddressIsNotZero();
+    error FunctionAlreadyExists(bytes4 selector);
+    error FunctionDoesNotExist(bytes4 selector);
+    error FunctionIsImmutable(bytes4 selector);
+    error CannotRemoveFunctionThatDoesNotExist(bytes4 selector);
+    error CannotRemoveImmutableFunction(bytes4 selector);
+
+    // --- External Function ---
+
     function diamondCut(
         FacetCut[] calldata _diamondCut,
         address _init,
         bytes calldata _calldata
     ) external override {
         LibDiamond.enforceIsOwner();
-        for (uint256 i = 0; i < _diamondCut.length; i++) {
+
+        for (uint256 i; i < _diamondCut.length; i++) {
             FacetCutAction action = _diamondCut[i].action;
             address facetAddress = _diamondCut[i].facetAddress;
             bytes4[] memory functionSelectors = _diamondCut[i].functionSelectors;
+
             if (action == FacetCutAction.Add) {
-                addFunctions(functionSelectors, facetAddress);
+                addFunctions(facetAddress, functionSelectors);
             } else if (action == FacetCutAction.Replace) {
-                replaceFunctions(functionSelectors, facetAddress);
+                replaceFunctions(facetAddress, functionSelectors);
             } else if (action == FacetCutAction.Remove) {
-                removeFunctions(functionSelectors);
+                removeFunctions(facetAddress, functionSelectors);
             } else {
-                revert("DiamondCut: Incorrect Action");
+                revert IncorrectFacetCutAction(action);
             }
         }
+
         emit LibDiamond.DiamondCut(_diamondCut, _init, _calldata);
         initializeDiamondCut(_init, _calldata);
     }
 
-    function addFunctions(bytes4[] memory _functionSelectors, address _facetAddress) private {
+    // --- Internal Logic ---
+
+    function addFunctions(address _facetAddress, bytes4[] memory _functionSelectors) private {
+        if (_facetAddress == address(0)) revert FacetAddressIsZero();
+        
         LibDiamond.DiamondStorage storage ds = LibDiamond.diamondStorage();
-        require(_facetAddress != address(0), "DiamondCut: Address is zero");
-        for (uint256 i = 0; i < _functionSelectors.length; i++) {
+        uint96 selectorPosition = uint96(ds.selectors.length);
+
+        for (uint256 i; i < _functionSelectors.length; i++) {
             bytes4 selector = _functionSelectors[i];
-            require(ds.facetAddress[selector] == address(0), "DiamondCut: Can't add function that already exists");
+            address oldFacetAddress = ds.facetAddress[selector];
+            
+            if (oldFacetAddress != address(0)) revert FunctionAlreadyExists(selector);
+
             ds.facetAddress[selector] = _facetAddress;
+            ds.selectorPosition[selector] = selectorPosition;
             ds.selectors.push(selector);
-            ds.selectorPosition[selector] = ds.selectors.length - 1;
+            selectorPosition++;
         }
     }
 
-    function replaceFunctions(bytes4[] memory _functionSelectors, address _facetAddress) private {
+    function replaceFunctions(address _facetAddress, bytes4[] memory _functionSelectors) private {
+        if (_facetAddress == address(0)) revert FacetAddressIsZero();
+        
         LibDiamond.DiamondStorage storage ds = LibDiamond.diamondStorage();
-        require(_facetAddress != address(0), "DiamondCut: Address is zero");
-        for (uint256 i = 0; i < _functionSelectors.length; i++) {
+
+        for (uint256 i; i < _functionSelectors.length; i++) {
             bytes4 selector = _functionSelectors[i];
-            require(ds.facetAddress[selector] != address(0), "DiamondCut: Can't replace function that doesn't exist");
+            address oldFacetAddress = ds.facetAddress[selector];
+
+            if (oldFacetAddress == address(0)) revert FunctionDoesNotExist(selector);
+            if (oldFacetAddress == _facetAddress) revert FunctionAlreadyExists(selector); // Optimasi: tidak perlu replace jika alamat sama
+
+            // Note: Kita bisa menambahkan cek immutable disini jika diperlukan
+            
             ds.facetAddress[selector] = _facetAddress;
         }
     }
 
-    function removeFunctions(bytes4[] memory _functionSelectors) private {
+    function removeFunctions(address _facetAddress, bytes4[] memory _functionSelectors) private {
+        if (_facetAddress != address(0)) revert FacetAddressIsNotZero(); // Remove harus address(0)
+
         LibDiamond.DiamondStorage storage ds = LibDiamond.diamondStorage();
-        for (uint256 i = 0; i < _functionSelectors.length; i++) {
+
+        for (uint256 i; i < _functionSelectors.length; i++) {
             bytes4 selector = _functionSelectors[i];
-            uint256 position = ds.selectorPosition[selector];
-            require(position != 0 || ds.selectors[0] == selector, "DiamondCut: Can't remove function that doesn't exist");
-            bytes4 lastSelector = ds.selectors[ds.selectors.length - 1];
-            ds.selectors[position] = lastSelector;
-            ds.selectorPosition[lastSelector] = position;
+            address oldFacetAddress = ds.facetAddress[selector];
+            
+            if (oldFacetAddress == address(0)) revert CannotRemoveFunctionThatDoesNotExist(selector);
+
+            // Logic Swap-and-Pop untuk efisiensi array
+            uint256 selectorPosition = ds.selectorPosition[selector];
+            uint256 lastSelectorPosition = ds.selectors.length - 1;
+
+            if (selectorPosition != lastSelectorPosition) {
+                bytes4 lastSelector = ds.selectors[lastSelectorPosition];
+                ds.selectors[selectorPosition] = lastSelector;
+                ds.selectorPosition[lastSelector] = selectorPosition;
+            }
+
             ds.selectors.pop();
-            delete ds.facetAddress[selector];
             delete ds.selectorPosition[selector];
+            delete ds.facetAddress[selector];
         }
     }
 
     function initializeDiamondCut(address _init, bytes memory _calldata) private {
-        if (_init != address(0)) {
-            (bool success, ) = _init.delegatecall(_calldata);
-            require(success, "DiamondCut: _init call failed");
+        if (_init == address(0)) {
+            return;
+        }
+        
+        (bool success, bytes memory errorData) = _init.delegatecall(_calldata);
+        
+        if (!success) {
+            if (errorData.length > 0) {
+                // Bubble up error asli dari kontrak _init
+                assembly {
+                    let returndata_size := mload(errorData)
+                    revert(add(32, errorData), returndata_size)
+                }
+            } else {
+                revert InitCallFailed();
+            }
         }
     }
 }
-
