@@ -3,37 +3,49 @@
 [![Build Status](https://img.shields.io/travis/com/bayyubenjamin/afa-identity-diamond.svg?style=flat-square)](https://travis-ci.com/bayyubenjamin/afa-identity-diamond)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg?style=flat-square)](https://opensource.org/licenses/MIT)
 
-**Afa Identity Diamond** is a sophisticated decentralized identity (DID) system built using the **EIP-2535 Diamond Standard**. This project provides a robust foundation for secure digital identity management and integrates a powerful, production-grade **on-chain premium subscription system**.
+**Afa Identity Diamond** is a sophisticated decentralized identity (DID) system built using the **EIP-2535 Diamond Standard**. This project provides a robust foundation for secure digital identity management, ensuring **Cross-Chain Security** and integrating a production-grade **on-chain premium subscription system**.
 
-Designed for scalability and gas efficiency, this contract utilizes **Custom Errors**, **Assembly-based Error Bubbling**, and strict security checks, making it a complete, out-of-the-box solution for dApps looking to monetize services securely on the blockchain.
+Designed for the multi-chain era, this contract features **Replay Attack Protection**, **Strict Soulbound Enforcement**, and **Self-Sovereign Identity (SSI)** principles, making it a secure and scalable solution for dApps on Base, Optimism, and beyond.
 
 ## ✨ Key Features
 
-* **Decentralized Identity Management**: Securely manage digital identities on-chain through the `IdentityCoreFacet` and `IdentityEnumerableFacet`.
-* **Multi-Tier Premium Subscription**: Users can subscribe to flexible tiers (1 Month, 6 Months, 1 Year).
-* **Smart Treasury Management**: Integrated **Withdrawal Logic** ensures project owners can securely retrieve revenue.
-* **Auto-Refund Mechanism**: The contract automatically refunds excess ETH if a user overpays, ensuring a superior User Experience (UX).
-* **Gas Optimized**: Utilizes Solidity **Custom Errors** instead of string revert messages to significantly reduce deployment and execution costs.
-* **EIP-2535 Architecture**: Infinitely upgradeable without data migration.
+* **🛡️ Cross-Chain Replay Protection**: Minting signatures are cryptographically bound to the specific `chainid`. A signature generated for Base cannot be replayed on Optimism or Mainnet.
+* **🔒 Strict Soulbound (SBT)**: The identity token is non-transferable. All transfer logic is overridden to revert efficiently, ensuring true identity persistence.
+* **🔥 Self-Sovereign & GDPR Compliant**: Users possess the right to `burn` (delete) their own identity at any time, respecting privacy and "Right to be Forgotten" standards.
+* **💎 Multi-Tier Premium Subscription**: Monetize your dApp with flexible on-chain subscription tiers (Monthly, Yearly) managed via the `SubscriptionManagerFacet`.
+* **⚡ Gas Optimized**: Replaced expensive string reverts with **Custom Errors** (e.g., `Identity_InvalidSignature`) to significantly reduce deployment and runtime costs.
+* **🏦 Smart Treasury**: Integrated withdrawal logic ensures secure revenue collection for the project owner.
 
 ---
 
-## 💎 Feature Highlight: `SubscriptionManagerFacet`
+## 🛡️ Feature Highlight: `IdentityCoreFacet` (Security)
 
-The `SubscriptionManagerFacet.sol` has been engineered for production use, focusing on security, economy, and fairness.
+The core identity logic has been hardened for production environments.
 
-### Core Capabilities:
+### 1. Advanced Sybil Resistance
+Identity minting requires a cryptographic signature from a trusted Verifier. The hashing algorithm includes:
+* `msg.sender` (Recipient)
+* `nonce` (Prevent local replay)
+* **`block.chainid` (Prevent cross-chain replay)**
 
-* **🚀 Upgrade to Premium (`upgradeToPremium`)** Users pay in ETH to upgrade. The system handles logic for:
-  * **Validity Extension**: Adds time to existing expiration if active, or starts fresh if expired.
-  * **Auto-Refund**: If the price is 0.1 ETH and the user sends 0.15 ETH, **0.05 ETH is instantly refunded**.
-  * **Security**: Validates token ownership and tier existence before processing.
+### 2. True Soulbound Token (SBT)
+Unlike standard NFTs, `AFAID` tokens cannot be transferred, bought, or sold.
+* `transferFrom`, `safeTransferFrom`, and `approve` functions are hard-wired to revert with `Identity_SoulboundTokenCannotBeTransferred`.
+* This ensures the reputation attached to an ID is strictly bound to the original wallet.
 
-* **💰 Treasury Withdrawal (`withdrawFunds`)** A secure, admin-only function to withdraw accumulated ETH revenue to a specified address. Includes safety checks against zero-address transfers and failed calls.
+### 3. User-Controlled Lifecycle (Burn)
+We implement **Self-Sovereign Identity** principles. Users are not locked in; they can call `burnIdentity(tokenId)` to destroy their token and data association, ensuring full control over their on-chain presence.
 
-* **🔍 Status Verification (`isPremium`)** A lightweight `view` function for dApps to instantly gate content based on valid subscription status.
+---
 
-* **⚙️ Dynamic Pricing (`setPriceForTier`)** Admins can adjust subscription costs in real-time to respond to market conditions.
+## 💰 Feature Highlight: `SubscriptionManagerFacet` (Monetization)
+
+Turnkey solution for dApp monetization.
+
+* **Upgrade to Premium**: Handles payments, validity extensions, and **Auto-Refunds** (instantly returns excess ETH to the user).
+* **Status Verification**: Simple `isPremium(tokenId)` view function for gating content.
+* **Dynamic Pricing**: Admins can update tier prices in real-time.
+* **Secure Withdrawal**: Admin-only function to withdraw revenue safely.
 
 ---
 
@@ -41,21 +53,19 @@ The `SubscriptionManagerFacet.sol` has been engineered for production use, focus
 
 This project leverages the **EIP-2535 Diamond Standard** to split logic into multiple implementation contracts (*facets*) while maintaining a single storage layout.
 
-### Advanced Improvements:
-
-* **Custom Errors (Gas Efficiency)**:  
-  Replaced expensive string requires (e.g., `require(cond, "Long Error Message")`) with custom errors (e.g., `error InsufficientPayment()`). This saves gas for users and reduces contract bytecode size.
-  
-* **Assembly Error Bubbling (`DiamondCutFacet`)**:  
-  The upgrade logic now uses inline Assembly to bubble up the *exact* revert reason from initialization delegates. This makes debugging upgrade failures significantly easier compared to standard implementations.
+### Gas Optimization Strategy:
+* **Custom Errors**: We use defined errors like `Identity_InvalidSignature()` instead of `require(..., "String")`. This saves gas during deployment and execution.
+* **Unchecked Loops**: Used in `DiamondLoupeFacet` for efficient array iteration.
+* **Assembly Error Bubbling**: The upgrade logic (`DiamondCutFacet`) uses inline Assembly to bubble up the exact revert reason from delegates, aiding debugging.
 
 ### Core Facets:
 
-* **`SubscriptionManagerFacet.sol`**: Manages payments, refunds, validity logic, and revenue withdrawal.
-* **`DiamondCutFacet.sol`**: Standard Diamond upgrade logic, enhanced with strict `address(0)` checks for removals and assembly error handling.
-* **`IdentityCoreFacet.sol`**: Core identity creation and management.
+* **`IdentityCoreFacet.sol`**: Manages minting, security (replay protection), SBT enforcement, and burning.
+* **`SubscriptionManagerFacet.sol`**: Manages payments, refunds, subscription validity, and treasury.
+* **`DiamondCutFacet.sol`**: Standard Diamond upgrade logic with assembly error handling.
 * **`IdentityEnumerableFacet.sol`**: Enumeration of identity tokens.
-* **`OwnershipFacet.sol`**: Manages contract ownership and permissions.
+* **`DiamondLoupeFacet.sol`**: Introspection / Etherscan compliance.
+* **`OwnershipFacet.sol`**: Manages contract ownership.
 
 ---
 
