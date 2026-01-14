@@ -1,5 +1,3 @@
-// test/AFA_Identity.test.ts
-
 import { ethers } from "hardhat";
 import { expect } from "chai";
 import { Contract, ContractFactory } from "ethers";
@@ -10,8 +8,7 @@ import { DiamondInit, FacetNames } from "../diamondConfig";
 describe("AFA Identity Diamond Tests", function () {
     let diamondAddress: string;
     let ownershipFacet: Contract;
-    let testingAdminFacet: Contract;
-    let attestationFacet: Contract;
+    let testingAdminFacet: Contract; // Opsional jika masih ada
     let identityCoreFacet: Contract;
 
     let owner: SignerWithAddress;
@@ -23,26 +20,26 @@ describe("AFA Identity Diamond Tests", function () {
 
     beforeEach(async function () {
         [owner, user1, user2] = await ethers.getSigners();
-        admin = owner;
+        admin = owner; // Admin juga bertindak sebagai Verifier
 
-        // --- PERBAIKAN DI SINI ---
-        // 1. Deploy DiamondCutFacet terlebih dahulu karena dibutuhkan oleh konstruktor Diamond
+        // 1. Deploy DiamondCutFacet
         const DiamondCutFacetFactory = await ethers.getContractFactory("DiamondCutFacet");
         const diamondCutFacet = await DiamondCutFacetFactory.deploy();
         await diamondCutFacet.waitForDeployment();
 
-        // 2. Deploy Diamond dengan DUA argumen yang benar
+        // 2. Deploy Diamond
         const DiamondFactory: ContractFactory = await ethers.getContractFactory("Diamond");
         const diamondContract = await DiamondFactory.deploy(owner.address, await diamondCutFacet.getAddress());
         await diamondContract.waitForDeployment();
         diamondAddress = await diamondContract.getAddress();
         
-        // 3. Deploy sisa facet lainnya
+        // 3. Deploy Facets
         const cut = [];
         const facetContracts: { [key: string]: Contract } = {
-            'DiamondCutFacet': diamondCutFacet // Masukkan yang sudah di-deploy
+            'DiamondCutFacet': diamondCutFacet 
         };
         
+        // Pastikan IdentityCoreFacet ada di list FacetNames di diamondConfig.js
         const otherFacetNames = FacetNames.filter(name => name !== 'DiamondCutFacet');
 
         for (const facetName of otherFacetNames) {
@@ -52,7 +49,6 @@ describe("AFA Identity Diamond Tests", function () {
             facetContracts[facetName] = facet;
         }
 
-        // Siapkan 'cut' untuk semua facet (termasuk DiamondCutFacet)
         for (const facetName of FacetNames) {
              cut.push({
                 facetAddress: await facetContracts[facetName].getAddress(),
@@ -61,8 +57,10 @@ describe("AFA Identity Diamond Tests", function () {
             });
         }
         
+        // Initialize Diamond
         const initFacetContract = facetContracts[DiamondInit];
-        const verifierAddressForTest = admin.address;
+        // Verifier address diset ke 'admin' (owner)
+        const verifierAddressForTest = admin.address; 
         const baseURIForTest = "https://test.api.afa.io/metadata/";
         const functionCall = initFacetContract.interface.encodeFunctionData("initialize", [
             verifierAddressForTest,
@@ -70,37 +68,111 @@ describe("AFA Identity Diamond Tests", function () {
         ]);
         
         const diamondCutInstance = await ethers.getContractAt("IDiamondCut", diamondAddress);
-        // Hapus selector diamondCut dari cut karena sudah ditambahkan di constructor
         cut[0].functionSelectors = []; 
 
         await diamondCutInstance.connect(owner).diamondCut(cut, await initFacetContract.getAddress(), functionCall);
 
-        // Update instance kontrak untuk testing
+        // Connect Instances
         ownershipFacet = await ethers.getContractAt("OwnershipFacet", diamondAddress);
-        testingAdminFacet = await ethers.getContractAt("TestingAdminFacet", diamondAddress);
-        attestationFacet = await ethers.getContractAt("AttestationFacet", diamondAddress);
+        // Pastikan nama facet sesuai dengan nama file kontrak
         identityCoreFacet = await ethers.getContractAt("IdentityCoreFacet", diamondAddress);
     });
 
-    // ... sisa tes Anda tidak perlu diubah ...
-    describe("TestingAdminFacet", function() {
-        it("should have correct owner set during initialization", async function() {
-            expect(await ownershipFacet.owner()).to.equal(owner.address);
-        });
-        
-        it("should allow admin to mint an identity for a user using adminMint", async function() {
-            await expect(testingAdminFacet.connect(admin).adminMint(user1.address))
-                .to.emit(testingAdminFacet, "AdminIdentityMinted")
-                .withArgs(user1.address, 1);
+    describe("IdentityCoreFacet EIP-712 Minting", function() {
+        it("should allow user to mint identity using valid EIP-712 signature", async function() {
+            // Persiapan Data EIP-712
+            const network = await ethers.provider.getNetwork();
+            const chainId = network.chainId;
 
-            expect(await identityCoreFacet.ownerOf(1)).to.equal(user1.address);
-            expect(await attestationFacet.isPremium(1)).to.be.true;
+            const domain = {
+                name: "Afa Identity",
+                version: "1",
+                chainId: chainId,
+                verifyingContract: diamondAddress // Alamat Diamond, bukan Facet!
+            };
+
+            const types = {
+                MintIdentity: [
+                    { name: "recipient", type: "address" },
+                    { name: "nonce", type: "uint256" }
+                ]
+            };
+
+            const value = {
+                recipient: user1.address,
+                nonce: 0 // Nonce awal user1
+            };
+
+            // Sign Typed Data (Admin/Verifier menandatangani)
+            const signature = await admin.signTypedData(domain, types, value);
+
+            // User submit signature
+            await expect(identityCoreFacet.connect(user1).mintIdentity(signature))
+                .to.not.be.reverted;
+
+            // Verifikasi
+            const identityData = await identityCoreFacet.getIdentity(user1.address);
+            expect(identityData[0]).to.not.equal(0); // TokenId tidak boleh 0
         });
 
-        it("should NOT allow a non-admin to call adminMint", async function() {
-            await expect(
-                testingAdminFacet.connect(user1).adminMint(user2.address)
-            ).to.be.revertedWith("AFA: Must be admin");
+        it("should REVERT if signature is used by wrong user (Front-running protection)", async function() {
+            const network = await ethers.provider.getNetwork();
+            const domain = {
+                name: "Afa Identity",
+                version: "1",
+                chainId: network.chainId,
+                verifyingContract: diamondAddress 
+            };
+
+            const types = {
+                MintIdentity: [
+                    { name: "recipient", type: "address" }, // Signed untuk User 1
+                    { name: "nonce", type: "uint256" }
+                ]
+            };
+
+            const value = {
+                recipient: user1.address, 
+                nonce: 0 
+            };
+
+            const signature = await admin.signTypedData(domain, types, value);
+
+            // User 2 mencoba memakai signature milik User 1
+            await expect(identityCoreFacet.connect(user2).mintIdentity(signature))
+                .to.be.revertedWithCustomError(identityCoreFacet, "Identity_InvalidSignature");
+        });
+
+        it("should REVERT if signature is reused (Replay Protection)", async function() {
+             const network = await ethers.provider.getNetwork();
+             const domain = {
+                 name: "Afa Identity",
+                 version: "1",
+                 chainId: network.chainId,
+                 verifyingContract: diamondAddress 
+             };
+ 
+             const types = {
+                 MintIdentity: [
+                     { name: "recipient", type: "address" },
+                     { name: "nonce", type: "uint256" }
+                 ]
+             };
+ 
+             const value = {
+                 recipient: user1.address,
+                 nonce: 0 
+             };
+ 
+             const signature = await admin.signTypedData(domain, types, value);
+ 
+             // Mint pertama sukses
+             await identityCoreFacet.connect(user1).mintIdentity(signature);
+ 
+             // Mint kedua dengan signature sama harus gagal (karena nonce on-chain sudah naik)
+             await expect(identityCoreFacet.connect(user1).mintIdentity(signature))
+                .to.be.revertedWithCustomError(identityCoreFacet, "Identity_AlreadyHasIdentity");
+                // Atau jika logika mengizinkan update, errornya akan "Identity_InvalidSignature" karena nonce mismatch
         });
     });
 });
