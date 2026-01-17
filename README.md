@@ -4,49 +4,54 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg?style=flat-square)](https://opensource.org/licenses/MIT)
 [![Standard: EIP-2535](https://img.shields.io/badge/Standard-EIP--2535-blue)](https://eips.ethereum.org/EIPS/eip-2535)
 
-**Afa Identity Diamond** is a production-grade decentralized identity (DID) system built on the **EIP-2535 Diamond Standard**. It establishes a secure, modular foundation for digital identity management, featuring **EIP-712 Typed Data Signatures**, **Diamond-Storage Reentrancy Protection**, and a flexible on-chain subscription model.
+**Afa Identity Diamond** is a production-grade **Gamified Social Identity Protocol** built on the **EIP-2535 Diamond Standard**. It transforms static decentralized identifiers (DID) into dynamic, secure, and interactive "Web3 Profiles."
 
-Designed for the multi-chain ecosystem, this architecture guarantees **Cross-Chain Security**, **Strict Soulbound Enforcement**, and **Self-Sovereign Identity (SSI)** compliance, making it a scalable solution for dApps on Base, Optimism, and high-performance L2s.
+Beyond standard Identity Management, this protocol introduces **Social Recovery (Guardians)**, **On-Chain Gamification**, and a **Universal Handle System**, making it a robust foundation for SocialFi, DAO Governance, and Metaverse applications on Base, Optimism, and high-performance L2s.
 
 ## ✨ Key Features
 
-* **🛡️ EIP-712 Typed Security**: Minting utilizes **EIP-712 Structured Data**, providing human-readable signatures in wallets and robust protection against cross-chain replay attacks via Domain Separators.
-* **💎 Diamond-Storage Reentrancy Guard**: Custom-built mutex implementation residing in `LibIdentityStorage` to prevent reentrancy attacks without the storage collision risks common in standard proxy inheritance.
-* **🔒 Strict Soulbound (SBT)**: The identity token is non-transferable. All transfer logic is overridden to revert efficiently, ensuring true identity persistence.
-* **🔥 Self-Sovereign & GDPR Compliant**: Users possess the right to `burn` (delete) their own identity at any time, respecting privacy and "Right to be Forgotten" standards.
-* **💰 Auto-Refund Subscription System**: Monetization logic automatically calculates and instantly refunds any excess ETH sent during subscription upgrades.
-* **⚡ Gas Optimized**: Replaced expensive string reverts with **Custom Errors** and optimized storage packing to minimize execution costs.
+### 🆔 Core Identity & Security
+* **🛡️ EIP-712 Typed Security**: Minting utilizes **EIP-712 Structured Data** for human-readable signatures and protection against cross-chain replay attacks.
+* **💎 Diamond-Storage Architecture**: Modular "Facet" system with isolated storage pointers (`LibIdentity`, `LibSocial`, `LibRecovery`) guarantees 0% storage collision risk.
+* **🔒 Strict Soulbound (SBT)**: The identity token is non-transferable by default, ensuring reputation stays bound to the user.
+
+### 📢 Social & Reputation Layer **(NEW)**
+* **@ Handle System**: Users can claim unique usernames (e.g., `@satoshi`) backed by on-chain registry.
+* **Dynamic Profile**: Update Bio, Avatar, and Links without needing to burn/remint the NFT.
+* **🚑 Social Recovery**: "Lost Keys" solution. Users can appoint **Guardians** to rescue their Identity if their wallet is compromised.
+
+### 🎮 Engagement Engine **(NEW)**
+* **📈 On-Chain Leveling**: Built-in XP system tracking user activity.
+* **📅 Retention Mechanics**: `dailyCheckIn()` function to incentivize Daily Active Users (DAU).
+* **💰 Auto-Refund Subscriptions**: Monetization logic with automatic ETH overpayment protection.
 
 ---
 
-## 🛡️ Feature Highlight: `IdentityCoreFacet` (Security)
+## 🏗️ Module Breakdown
 
-The core identity logic has been hardened using industry-standard cryptography.
+The logic is split into specific Facets to ensure modularity and upgradeability.
 
-### 1. EIP-712 Advanced Sybil Resistance
-Instead of raw hashing, we implement **EIP-712 Typed Structured Data**. This ensures:
-* **User Safety**: Users see exactly what they are signing (Recipient Address & Nonce) in their wallet interface, not just a hex string.
-* **Cross-Chain Protection**: The `chainid` is embedded in the EIP-712 Domain Separator. A signature signed for Base cannot be replayed on Optimism.
-* **Cross-Contract Protection**: The `verifyingContract` address ensures signatures cannot be replayed on other deployments of AFA ID.
+### 1. Social Profile Facet (`SocialProfileFacet.sol`)
+Turns the NFT into a full Social Profile.
+* **Unique Handles**: Enforces uniqueness for usernames. Includes validation logic (length, allowed characters).
+* **Metadata Management**: Users can toggle privacy (Public/Private) and update profile data efficiently.
+* **Storage**: Uses `LibSocialStorage` to separate social data from core identity data.
 
-### 2. True Soulbound Token (SBT)
-Unlike standard NFTs, `AFAID` tokens cannot be transferred, bought, or sold.
-* `transferFrom`, `safeTransferFrom`, and `approve` functions are hard-wired to revert with `Identity_SoulboundTokenCannotBeTransferred`.
-* This ensures the reputation attached to an ID is strictly bound to the original wallet.
+### 2. Social Recovery Facet (`SocialRecoveryFacet.sol`)
+**A "Safety Net" for Web3 Users.**
+* **Guardian Logic**: Users appoint trusted wallets (friends/hardware wallets) as Guardians.
+* **Secure Rescue**: If a private key is lost, Guardians can vote to migrate the Identity Profile to a new address.
+* **SBT Exception**: This is the *only* strictly controlled pathway where an SBT can be transferred, implementing a Timelock and Threshold mechanism for security.
 
-### 3. User-Controlled Lifecycle (Burn)
-We implement **Self-Sovereign Identity** principles. Users are not locked in; they can call `burnIdentity(tokenId)` to destroy their token and data association, ensuring full control over their on-chain presence.
+### 3. Gamification Facet (`GamificationFacet.sol`)
+**Native User Retention System.**
+* **XP & Levels**: Calculates user Level based on stored XP (e.g., `Level = sqrt(XP)`).
+* **Activity Tracking**: Contracts can integrate to reward users with XP for specific actions.
+* **Daily Rewards**: Prevents spam while rewarding consistent interaction via time-based cooldowns.
 
----
-
-## 💰 Feature Highlight: `SubscriptionManagerFacet` (Monetization)
-
-Turnkey solution for dApp monetization with financial safety mechanisms.
-
-* **Secure Payments**: Protected by a custom **Diamond-Compatible Reentrancy Guard** to prevent reentrancy during ETH transfers.
-* **Auto-Refunds**: Logic calculates the exact tier price and immediately refunds overpayments in the same transaction.
-* **Status Verification**: Simple `isPremium(tokenId)` view function for gating content.
-* **Secure Treasury**: Implements the "Pull" payment pattern using `call` with return value checks to prevent DoS attacks during revenue withdrawal.
+### 4. Identity Core (`IdentityCoreFacet.sol`)
+* **Minting**: Validates EIP-712 signatures from a centralized Verifier (Gasless minting ready).
+* **Burning**: GDPR-compliant "Right to be Forgotten" allowing users to self-destruct their identity.
 
 ---
 
@@ -54,24 +59,25 @@ Turnkey solution for dApp monetization with financial safety mechanisms.
 
 This project leverages the **EIP-2535 Diamond Standard** to split logic into multiple implementation contracts (*facets*) while maintaining a single storage layout.
 
-### High-Impact Security Measures:
-* **Storage-Layout Mutex**: Standard `ReentrancyGuard` from OpenZeppelin can cause storage collisions in Diamonds. We implemented a custom mutex in `LibIdentityStorage` to ensure safe locking across all facets.
-* **Signature Validity**: Strict nonce management prevents local replay attacks.
-* **Access Control**: Granular permissioning via `LibDiamond` enforcement ensures only the owner can modify critical parameters.
+### Advanced Security Measures:
+* **Custom Mutex**: Instead of standard `ReentrancyGuard` which causes storage clashes in Diamonds, we use a custom mutex implementation in `LibIdentityStorage`.
+* **Storage Isolation**: Every feature set (Social, Recovery, Game) has its own Library with a unique storage slot hash. This prevents data corruption during upgrades.
+* **Domain Separators**: Signatures include `chainid` and `verifyingContract` address, preventing replay attacks across different networks (e.g., Base vs Optimism).
 
-### Gas Optimization Strategy:
-* **Custom Errors**: We use defined errors like `Identity_InvalidSignature()` instead of `require(..., "String")`. This saves ~2000 gas per revert.
-* **Unchecked Loops**: Used in `DiamondLoupeFacet` for efficient array iteration.
-* **Assembly Error Bubbling**: The upgrade logic uses inline Assembly to bubble up the exact revert reason from delegates, aiding debugging.
+### Gas Optimization:
+* **Custom Errors**: Replaced string reverts with Custom Errors (e.g., `Social_HandleAlreadyTaken()`), saving ~2000 gas per revert.
+* **Bitpacking**: Boolean flags and timestamps are packed tightly in structs where possible.
 
-### Core Facets:
+### Core Facets List:
 
-* **`IdentityCoreFacet.sol`**: EIP-712 Minting, SBT enforcement, and Burning logic.
-* **`SubscriptionManagerFacet.sol`**: Payments, Subscription validity, and Secure Treasury management.
-* **`DiamondCutFacet.sol`**: Standard Diamond upgrade logic.
-* **`IdentityEnumerableFacet.sol`**: Enumeration of identity tokens.
-* **`DiamondLoupeFacet.sol`**: Introspection / Etherscan compliance.
-* **`OwnershipFacet.sol`**: Manages contract ownership.
+* **`IdentityCoreFacet`**: Mint/Burn & SBT Logic.
+* **`SocialProfileFacet`**: Handles, Bio, Links.
+* **`SocialRecoveryFacet`**: Guardian management & Account rescue.
+* **`GamificationFacet`**: XP, Leveling, Check-ins.
+* **`SubscriptionManagerFacet`**: Payments & Treasury.
+* **`DiamondCutFacet`**: Upgradeability.
+* **`DiamondLoupeFacet`**: Introspection.
+* **`OwnershipFacet`**: Admin control.
 
 ---
 
@@ -101,6 +107,11 @@ This project leverages the **EIP-2535 Diamond Standard** to split logic into mul
 3.  **Compile Contracts:**
     ```sh
     npx hardhat compile
+    ```
+
+4.  **Test:**
+    ```sh
+    npx hardhat test
     ```
 
 ### Configuration
