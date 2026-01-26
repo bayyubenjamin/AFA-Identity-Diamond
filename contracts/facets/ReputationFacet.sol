@@ -1,29 +1,65 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.20;
+pragma solidity ^0.8.24;
 
-import "../storage/AppStorage.sol";
-import "../diamond/libraries/LibDiamond.sol";
+import { LibDiamond } from "../diamond/libraries/LibDiamond.sol";
 
-contract ReputationFacet {
-    AppStorage internal s;
+library LibReputationStorage {
+    bytes32 constant STORAGE_POSITION = keccak256("afa.identity.reputation.storage.v1");
 
-    event ReputationUpdated(uint256 indexed tokenId, uint256 newScore);
-
-    // Hitung reputasi: (Umur Akun dalam hari * 1 poin) + (Verified * 50 poin) + Base Score
-    function calculateReputation(uint256 _tokenId) public view returns (uint256) {
-        require(s.owners[_tokenId] != address(0), "Identity not found");
-        
-        uint256 ageInDays = (block.timestamp - s.createdAt[_tokenId]) / 1 days;
-        uint256 verificationBonus = s.isVerified[_tokenId] ? 50 : 0;
-        uint256 currentBase = s.reputationScore[_tokenId];
-
-        return currentBase + ageInDays + verificationBonus;
+    struct Layout {
+        // TokenID -> Reputation Score
+        mapping(uint256 => uint256) reputationScore;
+        // TokenID -> Badges (Array of badge IDs)
+        mapping(uint256 => uint256[]) badges;
     }
 
-    // Fungsi update manual oleh sistem/admin (misal user menyelesaikan quest)
-    function boostReputation(uint256 _tokenId, uint256 _points) external {
-        LibDiamond.enforceIsContractOwner();
-        s.reputationScore[_tokenId] += _points;
-        emit ReputationUpdated(_tokenId, calculateReputation(_tokenId));
+    function layout() internal pure returns (Layout storage s) {
+        bytes32 position = STORAGE_POSITION;
+        assembly { s.slot := position }
+    }
+}
+
+contract ReputationFacet {
+    event ReputationChanged(uint256 indexed tokenId, int256 change, uint256 newScore);
+    event BadgeAwarded(uint256 indexed tokenId, uint256 badgeId);
+
+    modifier onlyAdmin() {
+        LibDiamond.enforceIsOwner();
+        _;
+    }
+
+    // --- Write Functions ---
+
+    function updateReputation(uint256 _tokenId, int256 _change) external onlyAdmin {
+        LibReputationStorage.Layout storage rs = LibReputationStorage.layout();
+        
+        uint256 currentScore = rs.reputationScore[_tokenId];
+        uint256 newScore;
+
+        if (_change < 0) {
+            uint256 deduc = uint256(-_change);
+            newScore = (currentScore > deduc) ? currentScore - deduc : 0;
+        } else {
+            newScore = currentScore + uint256(_change);
+        }
+
+        rs.reputationScore[_tokenId] = newScore;
+        emit ReputationChanged(_tokenId, _change, newScore);
+    }
+
+    function awardBadge(uint256 _tokenId, uint256 _badgeId) external onlyAdmin {
+        LibReputationStorage.Layout storage rs = LibReputationStorage.layout();
+        rs.badges[_tokenId].push(_badgeId);
+        emit BadgeAwarded(_tokenId, _badgeId);
+    }
+
+    // --- Read Functions ---
+
+    function getReputation(uint256 _tokenId) external view returns (uint256) {
+        return LibReputationStorage.layout().reputationScore[_tokenId];
+    }
+
+    function getBadges(uint256 _tokenId) external view returns (uint256[] memory) {
+        return LibReputationStorage.layout().badges[_tokenId];
     }
 }

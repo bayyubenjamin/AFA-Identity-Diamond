@@ -1,38 +1,78 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.20;
+pragma solidity ^0.8.24;
 
-import "../storage/AppStorage.sol";
+import { LibDiamond } from "../diamond/libraries/LibDiamond.sol";
+import { LibIdentityStorage } from "../libraries/LibIdentityStorage.sol";
+
+library LibStakingStorage {
+    bytes32 constant STORAGE_POSITION = keccak256("afa.identity.staking.storage.v1");
+
+    struct Layout {
+        // TokenID -> Staked Amount (Native Token)
+        mapping(uint256 => uint256) stakedBalance;
+        // TokenID -> Waktu mulai staking
+        mapping(uint256 => uint256) stakingStartTime;
+        // Minimum stake amount
+        uint256 minStake;
+    }
+
+    function layout() internal pure returns (Layout storage s) {
+        bytes32 position = STORAGE_POSITION;
+        assembly { s.slot := position }
+    }
+}
 
 contract StakingFacet {
-    AppStorage internal s;
-
     event Staked(uint256 indexed tokenId, uint256 amount);
     event Unstaked(uint256 indexed tokenId, uint256 amount);
 
-    function stake(uint256 _tokenId) external payable {
-        require(s.owners[_tokenId] == msg.sender, "Not token owner");
-        require(msg.value > 0, "Cannot stake 0");
+    function setMinStake(uint256 _amount) external {
+        LibDiamond.enforceIsOwner();
+        LibStakingStorage.layout().minStake = _amount;
+    }
 
-        s.stakedBalances[_tokenId] += msg.value;
-        s.stakeUnlockTimes[_tokenId] = block.timestamp + 30 days; // Lock 30 hari
+    function stake(uint256 _tokenId) external payable {
+        require(msg.value > 0, "Cannot stake 0");
+        
+        // Verifikasi kepemilikan identity
+        LibIdentityStorage.Layout storage isStore = LibIdentityStorage.layout();
+        require(isStore._tokenIdToAddress[_tokenId] == msg.sender, "Not identity owner");
+
+        LibStakingStorage.Layout storage ss = LibStakingStorage.layout();
+        
+        ss.stakedBalance[_tokenId] += msg.value;
+        if (ss.stakingStartTime[_tokenId] == 0) {
+            ss.stakingStartTime[_tokenId] = block.timestamp;
+        }
 
         emit Staked(_tokenId, msg.value);
     }
 
-    function unstake(uint256 _tokenId) external {
-        require(s.owners[_tokenId] == msg.sender, "Not token owner");
-        require(block.timestamp >= s.stakeUnlockTimes[_tokenId], "Still locked");
-        
-        uint256 amount = s.stakedBalances[_tokenId];
-        require(amount > 0, "No stake");
+    function unstake(uint256 _tokenId, uint256 _amount) external {
+        LibIdentityStorage.Layout storage isStore = LibIdentityStorage.layout();
+        require(isStore._tokenIdToAddress[_tokenId] == msg.sender, "Not identity owner");
 
-        s.stakedBalances[_tokenId] = 0;
-        payable(msg.sender).transfer(amount);
-        
-        emit Unstaked(_tokenId, amount);
+        LibStakingStorage.Layout storage ss = LibStakingStorage.layout();
+        require(ss.stakedBalance[_tokenId] >= _amount, "Insufficient stake");
+
+        ss.stakedBalance[_tokenId] -= _amount;
+        if (ss.stakedBalance[_tokenId] == 0) {
+            ss.stakingStartTime[_tokenId] = 0;
+        }
+
+        (bool success, ) = payable(msg.sender).call{value: _amount}("");
+        require(success, "Transfer failed");
+
+        emit Unstaked(_tokenId, _amount);
     }
 
-    function getStakeInfo(uint256 _tokenId) external view returns (uint256 amount, uint256 unlockTime) {
-        return (s.stakedBalances[_tokenId], s.stakeUnlockTimes[_tokenId]);
+    function getStakeInfo(uint256 _tokenId) external view returns (uint256 amount, uint256 duration) {
+        LibStakingStorage.Layout storage ss = LibStakingStorage.layout();
+        amount = ss.stakedBalance[_tokenId];
+        if (ss.stakingStartTime[_tokenId] != 0) {
+            duration = block.timestamp - ss.stakingStartTime[_tokenId];
+        } else {
+            duration = 0;
+        }
     }
 }
