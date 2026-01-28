@@ -1,126 +1,133 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.24;
 
-import { LibRecoveryStorage } from "../libraries/LibRecoveryStorage.sol";
-import { LibIdentityStorage } from "../libraries/LibIdentityStorage.sol";
-import { LibDiamond } from "../diamond/libraries/LibDiamond.sol";
+import "../libraries/LibIdentityStorage.sol";
+import "../libraries/LibRecoveryStorage.sol"; // Pastikan library ini ada/dibuat
+import "@openzeppelin/contracts/utils/cryptography/ECDSA.sol";
+
+// Kita definisikan Library internal jika file LibRecoveryStorage.sol belum ada atau ingin di-override
+library LibRecoveryInternal {
+    bytes32 constant STORAGE_POSITION = keccak256("afa.identity.recovery.storage.v1");
+    struct Layout {
+        // TokenID -> List Guardian Addresses
+        mapping(uint256 => address[]) guardians;
+        // TokenID -> Threshold (min vote)
+        mapping(uint256 => uint256) threshold;
+        // TokenID -> Recovery Round (nonce untuk replay protection)
+        mapping(uint256 => uint256) recoveryNonce;
+    }
+    function layout() internal pure returns (Layout storage s) {
+        bytes32 position = STORAGE_POSITION;
+        assembly { s.slot := position }
+    }
+}
 
 contract SocialRecoveryFacet {
-    
-    // Events
-    event GuardianAdded(uint256 indexed tokenId, address indexed guardian);
-    event GuardianRemoved(uint256 indexed tokenId, address indexed guardian);
-    event RecoveryInitiated(uint256 indexed tokenId, address newOwner, address initiator);
-    event RecoverySupported(uint256 indexed tokenId, address guardian);
+    using ECDSA for bytes32;
+
+    event GuardiansUpdated(uint256 indexed tokenId, address[] newGuardians, uint256 threshold);
     event RecoveryExecuted(uint256 indexed tokenId, address oldOwner, address newOwner);
 
-    // Errors
-    error Recovery_OnlyIdentityOwner();
-    error Recovery_InvalidGuardian();
-    error Recovery_GuardianAlreadyExists();
-    error Recovery_GuardianNotFound();
-    error Recovery_NotAGuardian();
-    error Recovery_RequestNotFound();
-    error Recovery_AlreadyVoted();
-    error Recovery_TimelockNotExpired();
-    error Recovery_InsufficientVotes();
-    error Recovery_NewOwnerHasIdentity();
+    error Recovery_Unauthorized();
+    error Recovery_InvalidThreshold();
+    error Recovery_DuplicateGuardian();
+    error Recovery_NotEnoughSignatures();
+    error Recovery_InvalidSignature();
 
-    // --- Modifiers ---
-    modifier onlyIdentityOwner() {
+    // --- Configuration ---
+
+    /// @notice User mengatur Guardian mereka (misal: 3 teman, threshold 2)
+    function setGuardians(address[] calldata _guardians, uint256 _threshold) external {
         LibIdentityStorage.Layout storage ids = LibIdentityStorage.layout();
         uint256 tokenId = ids._addressToTokenId[msg.sender];
-        if (tokenId == 0 || ids._tokenIdToAddress[tokenId] != msg.sender) 
-            revert Recovery_OnlyIdentityOwner();
-        _;
+        require(tokenId != 0, "Identity not found");
+
+        if (_threshold == 0 || _threshold > _guardians.length) revert Recovery_InvalidThreshold();
+
+        LibRecoveryInternal.Layout storage rs = LibRecoveryInternal.layout();
+        
+        // Reset guardians
+        rs.guardians[tokenId] = _guardians;
+        rs.threshold[tokenId] = _threshold;
+
+        emit GuardiansUpdated(tokenId, _guardians, _threshold);
     }
 
-    // --- User: Manage Guardians ---
+    // --- Recovery Execution ---
 
-    function addGuardian(address _guardian) external onlyIdentityOwner {
-        if (_guardian == address(0) || _guardian == msg.sender) revert Recovery_InvalidGuardian();
-        
+    /// @notice Eksekusi pemulihan akun dengan tanda tangan para Guardian
+    /// @param _tokenId ID yang mau dipulihkan
+    /// @param _newOwner Address wallet baru
+    /// @param _signatures Array tanda tangan dari para guardian
+    function recoverIdentity(
+        uint256 _tokenId, 
+        address _newOwner, 
+        bytes[] calldata _signatures
+    ) external {
+        LibRecoveryInternal.Layout storage rs = LibRecoveryInternal.layout();
         LibIdentityStorage.Layout storage ids = LibIdentityStorage.layout();
-        uint256 tokenId = ids._addressToTokenId[msg.sender];
-        
-        LibRecoveryStorage.Layout storage rs = LibRecoveryStorage.layout();
-        
-        if (rs.isGuardian[tokenId][_guardian]) revert Recovery_GuardianAlreadyExists();
 
-        rs.guardians[tokenId].push(_guardian);
-        rs.isGuardian[tokenId][_guardian] = true;
-        
-        emit GuardianAdded(tokenId, _guardian);
-    }
+        uint256 threshold = rs.threshold[_tokenId];
+        require(threshold > 0, "Recovery not configured");
+        require(_signatures.length >= threshold, "Not enough signatures");
+        require(ids._addressToTokenId[_newOwner] == 0, "New owner already has identity");
 
-    // --- Guardian: Recovery Process ---
+        // Hash data yang disign oleh guardian: keccak256(tokenId, newOwner, nonce, contractAddress)
+        bytes32 hash = keccak256(abi.encodePacked(
+            _tokenId, 
+            _newOwner, 
+            rs.recoveryNonce[_tokenId],
+            address(this)
+        ));
+        bytes32 ethSignedHash = hash.toEthSignedMessageHash();
 
-    /// @notice Guardian memulai atau mendukung proses pemulihan akun teman
-    function supportRecovery(uint256 _tokenId, address _newOwner) external {
-        LibRecoveryStorage.Layout storage rs = LibRecoveryStorage.layout();
-        
-        // 1. Cek apakah msg.sender adalah guardian valid
-        if (!rs.isGuardian[_tokenId][msg.sender]) revert Recovery_NotAGuardian();
+        // Verifikasi Signature
+        uint256 validSignatures = 0;
+        address[] memory guardians = rs.guardians[_tokenId];
+        address lastSigner = address(0);
 
-        LibRecoveryStorage.RecoveryRequest storage req = rs.activeRecovery[_tokenId];
+        for (uint i = 0; i < _signatures.length; i++) {
+            address signer = ethSignedHash.recover(_signatures[i]);
+            
+            // Pastikan signer adalah guardian yang sah
+            bool isGuardian = false;
+            for (uint j = 0; j < guardians.length; j++) {
+                if (guardians[j] == signer) {
+                    isGuardian = true;
+                    break;
+                }
+            }
 
-        // 2. Jika request belum ada atau untuk address beda, reset/buat baru
-        if (req.newOwnerAddress != _newOwner) {
-            req.newOwnerAddress = _newOwner;
-            req.approvalCount = 0;
-            req.executeAfter = block.timestamp + 1 days; // Hardcoded delay 1 hari
-            req.executed = false;
-            // Reset votes logic perlu penanganan lebih kompleks di real prod, 
-            // di sini kita simplifikasi: request baru override yg lama.
-            emit RecoveryInitiated(_tokenId, _newOwner, msg.sender);
+            // Mencegah duplicate signature dari orang yang sama
+            if (isGuardian && signer > lastSigner) {
+                validSignatures++;
+                lastSigner = signer;
+            }
         }
 
-        // 3. Catat Vote
-        if (rs.hasVoted[_tokenId][msg.sender]) revert Recovery_AlreadyVoted();
-        
-        rs.hasVoted[_tokenId][msg.sender] = true;
-        req.approvalCount++;
+        if (validSignatures < threshold) revert Recovery_NotEnoughSignatures();
 
-        emit RecoverySupported(_tokenId, msg.sender);
-    }
-
-    /// @notice Eksekusi pemindahan akun setelah threshold tercapai
-    function executeRecovery(uint256 _tokenId) external {
-        LibRecoveryStorage.Layout storage rs = LibRecoveryStorage.layout();
-        LibRecoveryStorage.RecoveryRequest storage req = rs.activeRecovery[_tokenId];
-
-        if (req.newOwnerAddress == address(0)) revert Recovery_RequestNotFound();
-        if (req.executed) revert Recovery_RequestNotFound();
-        if (block.timestamp < req.executeAfter) revert Recovery_TimelockNotExpired();
-
-        // Cek Threshold (Misal hardcoded min 2 suara atau 50% guardian)
-        uint256 totalGuardians = rs.guardians[_tokenId].length;
-        uint256 threshold = totalGuardians / 2 + 1; // Simple Majority
-        
-        if (req.approvalCount < threshold) revert Recovery_InsufficientVotes();
-
-        // --- CORE LOGIC: Override Soulbound Ownership ---
-        LibIdentityStorage.Layout storage ids = LibIdentityStorage.layout();
+        // --- Execute Transfer (Bypassing Soulbound Check) ---
         address oldOwner = ids._tokenIdToAddress[_tokenId];
-        address newOwner = req.newOwnerAddress;
-
-        // Validasi New Owner tidak punya ID
-        if (ids._addressToTokenId[newOwner] != 0) revert Recovery_NewOwnerHasIdentity();
-
-        // 1. Update Mapping Address -> ID
+        
+        // 1. Update mapping ownership
+        ids._tokenIdToAddress[_tokenId] = _newOwner;
+        ids._addressToTokenId[_newOwner] = _tokenId;
+        
+        // 2. Hapus data owner lama
         delete ids._addressToTokenId[oldOwner];
-        ids._addressToTokenId[newOwner] = _tokenId;
+        ids._balances[oldOwner] -= 1;
+        ids._balances[_newOwner] += 1;
 
-        // 2. Update Mapping ID -> Address
-        ids._tokenIdToAddress[_tokenId] = newOwner;
+        // 3. Update Nonce Recovery
+        rs.recoveryNonce[_tokenId]++;
 
-        // 3. Pindahkan Balance
-        ids._balances[oldOwner]--;
-        ids._balances[newOwner]++;
-
-        // 4. Reset Request
-        req.executed = true;
-
-        emit RecoveryExecuted(_tokenId, oldOwner, newOwner);
+        emit RecoveryExecuted(_tokenId, oldOwner, _newOwner);
+    }
+    
+    // --- View ---
+    
+    function getGuardians(uint256 _tokenId) external view returns (address[] memory) {
+        return LibRecoveryInternal.layout().guardians[_tokenId];
     }
 }
