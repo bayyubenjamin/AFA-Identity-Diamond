@@ -8,18 +8,16 @@ import "@openzeppelin/contracts/token/ERC721/IERC721.sol";
 import "@openzeppelin/contracts/token/ERC721/extensions/IERC721Metadata.sol";
 import "@openzeppelin/contracts/utils/Strings.sol";
 import "@openzeppelin/contracts/utils/cryptography/ECDSA.sol";
-import "@openzeppelin/contracts/utils/cryptography/EIP712.sol"; // [NEW] Import EIP712
+import "@openzeppelin/contracts/utils/cryptography/EIP712.sol";
 
-contract IdentityCoreFacet is IERC721Metadata, EIP712 { // [NEW] Inherit EIP712
+contract IdentityCoreFacet is IERC721Metadata, EIP712 {
     using LibIdentityStorage for LibIdentityStorage.Layout;
     using Strings for uint256;
     using ECDSA for bytes32;
 
-    // --- TypeHash untuk EIP-712 ---
-    // Sesuai standar: keccak256("Function(Type arg1,Type arg2...)")
     bytes32 private constant MINT_TYPEHASH = keccak256("MintIdentity(address recipient,uint256 nonce)");
 
-    // --- Custom Errors ---
+    // Errors
     error Identity_SoulboundTokenCannotBeTransferred();
     error Identity_AlreadyHasIdentity();
     error Identity_InvalidSignature();
@@ -27,9 +25,9 @@ contract IdentityCoreFacet is IERC721Metadata, EIP712 { // [NEW] Inherit EIP712
     error Identity_QueryForZeroAddress();
     error Identity_NotTokenOwner();
     error Identity_AlreadyInitialized();
+    error Identity_CallerNotOwnerOrApproved();
 
-    // [NEW] Constructor EIP712
-    // Facet bisa punya constructor untuk set immutable variables di bytecode-nya
+    // Constructor EIP712
     constructor() EIP712("Afa Identity", "1") {}
 
     // --- Metadata ---
@@ -64,37 +62,15 @@ contract IdentityCoreFacet is IERC721Metadata, EIP712 { // [NEW] Inherit EIP712
         return LibIdentityStorage.layout()._balances[owner];
     }
 
-    // --- Soulbound Enforcement (SBT) ---
+    // --- Soulbound Enforcement ---
 
-    function approve(address, uint256) external pure override {
-        revert Identity_SoulboundTokenCannotBeTransferred();
-    }
-
-    function getApproved(uint256) external pure override returns (address) {
-        return address(0);
-    }
-
-    function setApprovalForAll(address, bool) external pure override {
-        revert Identity_SoulboundTokenCannotBeTransferred();
-    }
-
-    function isApprovedForAll(address, address) external pure override returns (bool) {
-        return false;
-    }
-
-    function transferFrom(address, address, uint256) external pure override {
-        revert Identity_SoulboundTokenCannotBeTransferred();
-    }
-
-    function safeTransferFrom(address, address, uint256) external pure override {
-        revert Identity_SoulboundTokenCannotBeTransferred();
-    }
-
-    function safeTransferFrom(address, address, uint256, bytes calldata) external pure override {
-        revert Identity_SoulboundTokenCannotBeTransferred();
-    }
-
-    // --- Interface Support ---
+    function approve(address, uint256) external pure override { revert Identity_SoulboundTokenCannotBeTransferred(); }
+    function getApproved(uint256) external pure override returns (address) { return address(0); }
+    function setApprovalForAll(address, bool) external pure override { revert Identity_SoulboundTokenCannotBeTransferred(); }
+    function isApprovedForAll(address, address) external pure override returns (bool) { return false; }
+    function transferFrom(address, address, uint256) external pure override { revert Identity_SoulboundTokenCannotBeTransferred(); }
+    function safeTransferFrom(address, address, uint256) external pure override { revert Identity_SoulboundTokenCannotBeTransferred(); }
+    function safeTransferFrom(address, address, uint256, bytes calldata) external pure override { revert Identity_SoulboundTokenCannotBeTransferred(); }
 
     function supportsInterface(bytes4 interfaceId) external pure returns (bool) {
         return
@@ -114,47 +90,39 @@ contract IdentityCoreFacet is IERC721Metadata, EIP712 { // [NEW] Inherit EIP712
         s.baseURI = _baseURI;
     }
 
-    /// @notice Mint Identity dengan EIP-712 Signature
-    /// @dev Menggunakan _hashTypedDataV4 untuk keamanan replay attack cross-chain & cross-contract
     function mintIdentity(bytes calldata _signature) external payable {
         LibIdentityStorage.Layout storage s = LibIdentityStorage.layout();
         address recipient = msg.sender;
 
-        // 1. Cek apakah user sudah punya identity
         if (s._addressToTokenId[recipient] != 0) revert Identity_AlreadyHasIdentity();
 
-        // 2. Buat Hash Struct sesuai EIP-712
-        // ChainID dan Contract Address sudah otomatis dihandle oleh _hashTypedDataV4
         bytes32 structHash = keccak256(abi.encode(
             MINT_TYPEHASH,
             recipient,
             s.nonce[recipient]
         ));
 
-        // 3. Hash Final dengan Domain Separator
         bytes32 digest = _hashTypedDataV4(structHash);
-
-        // 4. Recover Signer
         address signer = ECDSA.recover(digest, _signature);
 
-        // 5. Verifikasi
         if (signer != s.verifierAddress) revert Identity_InvalidSignature();
 
-        // 6. Eksekusi
         s.nonce[recipient]++;
-        uint256 tokenId = s._mint(recipient);
-        
-        // Emit event transfer manual karena library storage tidak emit event standard
-        // (Opsional: tambahkan emit Transfer(address(0), recipient, tokenId); jika event didefinisikan)
+        s._mint(recipient);
     }
     
     function burnIdentity(uint256 tokenId) external {
         LibIdentityStorage.Layout storage s = LibIdentityStorage.layout();
-        if (s._tokenIdToAddress[tokenId] != msg.sender) revert Identity_NotTokenOwner();
+        address owner = s._tokenIdToAddress[tokenId];
+        
+        if (owner != msg.sender && msg.sender != LibDiamond.contractOwner()) {
+             revert Identity_CallerNotOwnerOrApproved();
+        }
         
         delete s._tokenIdToAddress[tokenId];
-        delete s._addressToTokenId[msg.sender];
-        s._balances[msg.sender] -= 1;
+        delete s._addressToTokenId[owner];
+        s._balances[owner] -= 1;
+        // Emit standard transfer event to 0x0 implies burn logic visualization
     }
 
     // --- View Functions ---
@@ -166,6 +134,10 @@ contract IdentityCoreFacet is IERC721Metadata, EIP712 { // [NEW] Inherit EIP712
             premiumExpiration = s.premiumExpirations[tokenId];
             isPremium = premiumExpiration >= block.timestamp;
         }
+    }
+
+    function exists(uint256 tokenId) external view returns (bool) {
+         return LibIdentityStorage.layout()._tokenIdToAddress[tokenId] != address(0);
     }
 
     function verifier() external view returns (address) {
