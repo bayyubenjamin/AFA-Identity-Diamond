@@ -17,7 +17,11 @@ contract IdentityCoreFacet is IERC721Metadata, EIP712 {
 
     bytes32 private constant MINT_TYPEHASH = keccak256("MintIdentity(address recipient,uint256 nonce)");
 
-    // Errors
+    // --- Events ---
+    // [ADDED] Event untuk tracking perubahan verifier
+    event VerifierUpdated(address indexed oldVerifier, address indexed newVerifier);
+
+    // --- Errors ---
     error Identity_SoulboundTokenCannotBeTransferred();
     error Identity_AlreadyHasIdentity();
     error Identity_InvalidSignature();
@@ -26,6 +30,7 @@ contract IdentityCoreFacet is IERC721Metadata, EIP712 {
     error Identity_NotTokenOwner();
     error Identity_AlreadyInitialized();
     error Identity_CallerNotOwnerOrApproved();
+    error Identity_InvalidVerifierAddress(); // [ADDED] Error baru jika address 0
 
     // Constructor EIP712
     constructor() EIP712("Afa Identity", "1") {}
@@ -95,26 +100,38 @@ contract IdentityCoreFacet is IERC721Metadata, EIP712 {
         address recipient = msg.sender;
 
         if (s._addressToTokenId[recipient] != 0) revert Identity_AlreadyHasIdentity();
-
+        
         bytes32 structHash = keccak256(abi.encode(
             MINT_TYPEHASH,
             recipient,
             s.nonce[recipient]
         ));
-
+        
         bytes32 digest = _hashTypedDataV4(structHash);
         address signer = ECDSA.recover(digest, _signature);
 
         if (signer != s.verifierAddress) revert Identity_InvalidSignature();
 
         s.nonce[recipient]++;
-        s._mint(recipient);
+        // Internal mint logic (assuming _mint follows checks-effects-interactions if implemented completely in storage lib)
+        // Disini saya asumsikan s._mint adalah helper function di LibIdentityStorage atau dilogikakan manual
+        // Karena kode asli LibIdentityStorage tidak memiliki _mint, kita manual set:
+        
+        // Logika Mint Manual (sesuai best practice storage layout):
+        uint256 newTokenId = uint256(uint160(recipient)); // TokenID based on address
+        s._tokenIdToAddress[newTokenId] = recipient;
+        s._addressToTokenId[recipient] = newTokenId;
+        s._balances[recipient] = 1;
+        
+        // Emit Transfer event (required by ERC721)
+        emit Transfer(address(0), recipient, newTokenId);
     }
     
     function burnIdentity(uint256 tokenId) external {
         LibIdentityStorage.Layout storage s = LibIdentityStorage.layout();
         address owner = s._tokenIdToAddress[tokenId];
         
+        // Hanya Owner Token atau Contract Owner (Admin) yang bisa burn
         if (owner != msg.sender && msg.sender != LibDiamond.contractOwner()) {
              revert Identity_CallerNotOwnerOrApproved();
         }
@@ -122,7 +139,37 @@ contract IdentityCoreFacet is IERC721Metadata, EIP712 {
         delete s._tokenIdToAddress[tokenId];
         delete s._addressToTokenId[owner];
         s._balances[owner] -= 1;
-        // Emit standard transfer event to 0x0 implies burn logic visualization
+        
+        emit Transfer(owner, address(0), tokenId);
+    }
+
+    // --- Governance & Admin Functions ---
+
+    /**
+     * @notice Mengubah alamat Verifier (Signer) untuk rotasi key keamanan.
+     * @param _newVerifier Alamat signer baru untuk EIP-712.
+     */
+    function setVerifier(address _newVerifier) external {
+        // 1. Keamanan: Hanya Owner Diamond yang bisa panggil
+        LibDiamond.enforceIsOwner();
+
+        // 2. Validasi: Mencegah set ke address 0 yang akan mematikan minting
+        if (_newVerifier == address(0)) revert Identity_InvalidVerifierAddress();
+
+        LibIdentityStorage.Layout storage s = LibIdentityStorage.layout();
+        address oldVerifier = s.verifierAddress;
+
+        // 3. Update State
+        s.verifierAddress = _newVerifier;
+
+        // 4. Emit Event
+        emit VerifierUpdated(oldVerifier, _newVerifier);
+    }
+    
+    function setBaseURI(string memory _newBaseURI) external {
+        LibDiamond.enforceIsOwner();
+        LibIdentityStorage.Layout storage s = LibIdentityStorage.layout();
+        s.baseURI = _newBaseURI;
     }
 
     // --- View Functions ---
@@ -142,11 +189,5 @@ contract IdentityCoreFacet is IERC721Metadata, EIP712 {
 
     function verifier() external view returns (address) {
         return LibIdentityStorage.layout().verifierAddress;
-    }
-    
-    function setBaseURI(string memory _newBaseURI) external {
-        LibDiamond.enforceIsOwner();
-        LibIdentityStorage.Layout storage s = LibIdentityStorage.layout();
-        s.baseURI = _newBaseURI;
     }
 }
