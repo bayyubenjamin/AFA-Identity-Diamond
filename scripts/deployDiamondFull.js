@@ -7,9 +7,17 @@ function getSelector(signature) {
 
 async function main() {
     const [deployer] = await ethers.getSigners();
-    const verifierWalletAddress = "0xE0F4e897D99D8F7642DaA807787501154D316870";
+
+    // --- [FIX] KEAMANAN: Mengambil address dari .env ---
+    const verifierWalletAddress = process.env.VERIFIER_WALLET_ADDRESS;
+
+    // Validasi agar tidak deploy jika address kosong/lupa diset
+    if (!verifierWalletAddress) {
+        throw new Error("❌ Error: VERIFIER_WALLET_ADDRESS not found in .env file. Please add it before deploying.");
+    }
 
     console.log("🔨 Deploying contracts with the account:", deployer.address);
+    console.log("ℹ️  Using Verifier Address:", verifierWalletAddress);
     console.log("\n🚀 Deploying facets...");
 
     const facetContracts = {};
@@ -38,12 +46,35 @@ async function main() {
     console.log("\n🧩 Constructing Diamond Cut...");
     const cut = [];
 
-    // --- PERUBAHAN UTAMA: Memperbarui daftar fungsi untuk SubscriptionManagerFacet ---
     const selectorsMap = {
-        DiamondLoupeFacet: ["facets()", "facetFunctionSelectors(address)", "facetAddress(bytes4)", "supportsInterface(bytes4)"],
-        OwnershipFacet: ["owner()", "transferOwnership(address)", "withdraw()"],
-        IdentityCoreFacet: ["mintIdentity(bytes)", "getIdentity(address)", "verifier()", "baseURI()", "name()", "symbol()", "balanceOf(address)", "ownerOf(uint256)", "tokenURI(uint256)", "initialize(address,string)"],
-        // Menggunakan fungsi-fungsi baru untuk multi-tier subscription
+        DiamondLoupeFacet: [
+            "facets()", 
+            "facetFunctionSelectors(address)", 
+            "facetAddress(bytes4)", 
+            "supportsInterface(bytes4)"
+        ],
+        OwnershipFacet: [
+            "owner()", 
+            "transferOwnership(address)", 
+            "withdraw()"
+        ],
+        IdentityCoreFacet: [
+            "mintIdentity(bytes)", 
+            "getIdentity(address)", 
+            "verifier()", 
+            "baseURI()", 
+            "name()", 
+            "symbol()", 
+            "balanceOf(address)", 
+            "ownerOf(uint256)", 
+            "tokenURI(uint256)", 
+            "initialize(address,string)",
+            // --- [FIX] Menambahkan fungsi baru agar bisa dipanggil ---
+            "setVerifier(address)",    // Penting untuk rotasi key
+            "burnIdentity(uint256)",   // Penting untuk fitur burn
+            "setBaseURI(string)",      // Penting untuk update metadata
+            "exists(uint256)"
+        ],
         SubscriptionManagerFacet: [
             "setPriceForTier(uint8,uint256)", 
             "getPriceForTier(uint8)", 
@@ -51,9 +82,18 @@ async function main() {
             "getPremiumExpiration(uint256)", 
             "isPremium(uint256)"
         ],
-        AttestationFacet: ["attest(bytes32,bytes32)", "getAttestation(bytes32)"],
-        TestingAdminFacet: ["adminMint(address)"],
-        IdentityEnumerableFacet: ["totalSupply()", "tokenByIndex(uint256)", "tokenOfOwnerByIndex(address,uint256)"]
+        AttestationFacet: [
+            "attest(bytes32,bytes32)", 
+            "getAttestation(bytes32)"
+        ],
+        TestingAdminFacet: [
+            "adminMint(address)"
+        ],
+        IdentityEnumerableFacet: [
+            "totalSupply()", 
+            "tokenByIndex(uint256)", 
+            "tokenOfOwnerByIndex(address,uint256)"
+        ]
     };
 
     for (const facetName of FacetNames) {
@@ -73,6 +113,8 @@ async function main() {
     // Perform diamondCut and initialize
     const diamondCutInstance = await ethers.getContractAt("IDiamondCut", diamondAddress);
     const initFacet = facetContracts["IdentityCoreFacet"];
+    
+    // verifierWalletAddress sekarang diambil dari variabel di atas (dari .env)
     const functionCall = initFacet.interface.encodeFunctionData("initialize", [
         verifierWalletAddress,
         "https://cxoykbwigsfheaegpwke.supabase.co/functions/v1/metadata/",
@@ -83,18 +125,14 @@ async function main() {
     await tx.wait();
     console.log("✅ DiamondCut and initialization successful.");
 
-    // --- PENAMBAHAN BARU: Mengatur harga untuk setiap paket premium ---
+    // --- Mengatur harga untuk setiap paket premium ---
     console.log("\n🛠️  Setting initial prices for subscription tiers...");
     const subscriptionManager = await ethers.getContractAt("SubscriptionManagerFacet", diamondAddress);
     
-    // Konfigurasi harga (ubah sesuai kebutuhan Anda)
-    // Tier 0 = 1 Bulan
-    // Tier 1 = 6 Bulan
-    // Tier 2 = 1 Tahun
     const prices = {
         oneMonth: ethers.parseEther("0.0004"), // Contoh: 0.0004 ETH
-        sixMonths: ethers.parseEther("0.0025"), // Contoh: 0.0025 ETH (Diskon)
-        oneYear: ethers.parseEther("0.005")    // Contoh: 0.005 ETH (Diskon lebih besar)
+        sixMonths: ethers.parseEther("0.0025"), // Contoh: 0.0025 ETH
+        oneYear: ethers.parseEther("0.005")    // Contoh: 0.005 ETH
     };
 
     // Mengatur harga untuk 1 Bulan (Tier 0)
